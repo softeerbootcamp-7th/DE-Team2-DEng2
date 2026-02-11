@@ -1,0 +1,12 @@
+# 1. 보안 및 설정 파일 (가장 중요)
+data_pipeline/extract/secrets/
+.env
+
+# 2. 데이터 및 가상환경
+data/
+.venv/
+__pycache__/
+*.pyc
+
+# 3. OS 및 브라우저 관련
+.DS_Store
