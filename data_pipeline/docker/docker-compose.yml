@@ -8,6 +8,9 @@ services:
       - "7077:7077"
     environment:
       - SPARK_MODE=master
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
     volumes:
       - ./jobs:/opt/spark/jobs
       - ../../data:/opt/spark/data
@@ -25,6 +28,9 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_WORKER_WEBUI_PORT=8081
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
     volumes:
       - ./jobs:/opt/spark/jobs
       - ../../data:/opt/spark/data
@@ -42,6 +48,9 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_WORKER_WEBUI_PORT=8082
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
     volumes:
       - ./jobs:/opt/spark/jobs
       - ../../data:/opt/spark/data
@@ -58,6 +67,9 @@ services:
       - "18080:18080"
     environment:
       - SPARK_MODE=history
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
     volumes:
       - ./spark-events:/opt/spark/spark-events
     networks:
@@ -72,6 +84,9 @@ services:
       - "4040:4040"
     environment:
       - SPARK_MODE=jupyter
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
     volumes:
       - ./notebooks:/opt/spark/notebooks
       - ../../data:/opt/spark/data
