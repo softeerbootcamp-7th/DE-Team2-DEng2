@@ -1,0 +1,83 @@
+services:
+  spark-master:
+    build: .
+    container_name: spark-master
+    hostname: spark-master
+    ports:
+      - "8080:8080" 
+      - "7077:7077"
+    environment:
+      - SPARK_MODE=master
+    volumes:
+      - ./jobs:/opt/spark/jobs
+      - ./data:/opt/spark/data
+      - ./spark-events:/opt/spark/spark-events
+      - ./logs:/opt/spark/logs
+    networks:
+      - spark-network
+
+  spark-worker-1:
+    build: .
+    container_name: spark-worker-1
+    hostname: spark-worker-1
+    ports:
+      - 8081:8081
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_WORKER_WEBUI_PORT=8081
+    volumes:
+      - ./jobs:/opt/spark/jobs
+      - ./data:/opt/spark/data
+      - ./spark-events:/opt/spark/spark-events
+      - ./logs:/opt/spark/logs
+    networks:
+      - spark-network
+
+  spark-worker-2:
+    build: .
+    container_name: spark-worker-2
+    hostname: spark-worker-2
+    ports:
+      - 8082:8082
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_WORKER_WEBUI_PORT=8082
+    volumes:
+      - ./jobs:/opt/spark/jobs
+      - ./data:/opt/spark/data
+      - ./spark-events:/opt/spark/spark-events
+      - ./logs:/opt/spark/logs
+    networks:
+      - spark-network
+
+  spark-history-server:
+    build: .
+    container_name: spark-history-server
+    hostname: spark-history-server
+    ports:
+      - "18080:18080"
+    environment:
+      - SPARK_MODE=history
+    volumes:
+      - ./spark-events:/opt/spark/spark-events
+    networks:
+      - spark-network
+
+  spark-jupyter:
+    build: .
+    container_name: spark-jupyter
+    hostname: spark-jupyter
+    ports:
+      - "8888:8888"
+    environment:
+      - SPARK_MODE=jupyter
+    volumes:
+      - ./notebooks:/opt/spark/notebooks
+      - ./data:/opt/spark/data
+      - ./spark-events:/opt/spark/spark-events
+    networks:
+      - spark-network
+
+networks:
+  spark-network:
+    driver: bridge
