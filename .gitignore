@@ -10,3 +10,6 @@ __pycache__/
 
 # 3. OS 및 브라우저 관련
 .DS_Store
+
+# 4. Jupyter Notebook
+.ipynb_checkpoints/
