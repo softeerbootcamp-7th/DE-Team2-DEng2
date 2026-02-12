@@ -135,7 +135,7 @@ def build_query_url(cfg: Config, start_date: str, end_date: str) -> str:
         f"&dsId={cfg.ds_id}"
         "&searchSvcCde=&searchOrganization=&dataSetSeq=12"
         "&searchTagList=&pageIndex=1&sortType=00"
-        "&datPageIndex=1&datPageSize=25"
+        "&datPageIndex=1&datPageSize=50"
         f"&startDate={start_date}&endDate={end_date}"
         "&sidoCd=&dsNm="
         f"&formatSelect={cfg.format_select}"
@@ -329,19 +329,27 @@ def is_already_prefixed(fname: str) -> bool:
             return True
     return False
 
-
 def click_each_row_download_one_by_one(
     driver,
     logger,
     zip_save_dir: Path,
+    limit: int = 17
 ):
-    buttons = driver.find_elements(By.XPATH, "//button[normalize-space()='다운로드']")
+    # 전체 다운로드 버튼 목록 가져오기
+    all_buttons = driver.find_elements(By.XPATH, "//button[normalize-space()='다운로드']")
+    
+    # 🔥 리스트의 뒤에서부터 17개만 선택
+    buttons = all_buttons[-limit:]
+    
+    logger.info(f"총 {len(all_buttons)}건 중 하위(끝에서부터) {len(buttons)}건에 대해서만 다운로드를 진행합니다.")
+    
     saved = []
 
     for idx, btn in enumerate(buttons, start=1):
-        logger.info(f"[{idx}/{len(buttons)}] 다운로드 시작")
+        # 현재 루프가 실제 리스트의 몇 번째인지 출력하기 위해 idx 사용
+        logger.info(f"[{idx}/{len(buttons)}] 다운로드 시작 (대상: 뒤에서 {len(buttons)-idx+1}번째 파일)")
 
-        # 🔑 다운로드 전 상태 스냅샷
+        # 다운로드 전 상태 스냅샷
         before = set(zip_save_dir.glob("*.zip"))
 
         driver.execute_script(
@@ -349,24 +357,26 @@ def click_each_row_download_one_by_one(
         )
         driver.execute_script("arguments[0].click();", btn)
 
-        # 🔑 반드시 새로 생긴 파일만 잡는다
-        f = wait_new_zip_created(zip_save_dir, before)
+        # 반드시 새로 생긴 파일만 잡는다
+        try:
+            f = wait_new_zip_created(zip_save_dir, before)
+            
+            if is_already_prefixed(f.name):
+                logger.warning(f"이미 처리된 파일 스킵: {f.name}")
+                continue
 
-        # 🔒 이미 prefix 있으면 스킵 (이중 방어)
-        if is_already_prefixed(f.name):
-            logger.warning(f"이미 처리된 파일 스킵: {f.name}")
+            target = zip_save_dir / f"{f.name}"
+            logger.info(f"✔️ 저장 완료: {target.name}")
+            saved.append(target)
+            
+        except TimeoutError:
+            logger.error(f"[{idx}] 다운로드 대기 시간 초과 - 다음 파일로 진행합니다.")
             continue
-
-        target = zip_save_dir / f"{f.name}"
-
-        logger.info(f"✔️ 저장 완료: {target.name}")
-        saved.append(target)
 
         # 사람처럼 쉬기
         time.sleep(3)
 
     return saved
-
 
 # =========================================================
 # CSV → Parquet

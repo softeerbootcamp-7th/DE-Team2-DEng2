@@ -6,7 +6,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
-COOKIE_PATH = Path("secrets/vworld_cookies.json")
+COOKIE_PATH = Path("data_pipeline/extract/secrets/vworld_cookies.json")
 START_URL = "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=12"
 
 def main():
