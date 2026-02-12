@@ -18,7 +18,10 @@ ENV SPARK_HOME=/opt/spark
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-${TARGETARCH}
 ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin:$JAVA_HOME/bin
 
-RUN curl -fL "https://archive.apache.org/dist/spark/spark-$SPARK_VERSION/spark-$SPARK_VERSION-bin-hadoop$HADOOP_VERSION.tgz" | tar xz -C /opt && \
+# 한국 미러를 우선 사용하고, 실패 시 아카이브를 사용하도록 작성하는 것이 안전합니다.
+RUN MIRROR_URL="https://mirror.kakao.com/apache/spark/spark-$SPARK_VERSION/spark-$SPARK_VERSION-bin-hadoop$HADOOP_VERSION.tgz" && \
+    curl -fL "$MIRROR_URL" | tar xz -C /opt || \
+    (curl -fL "https://archive.apache.org/dist/spark/spark-$SPARK_VERSION/spark-$SPARK_VERSION-bin-hadoop$HADOOP_VERSION.tgz" | tar xz -C /opt) && \
     mv /opt/spark-$SPARK_VERSION-bin-hadoop$HADOOP_VERSION $SPARK_HOME
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
