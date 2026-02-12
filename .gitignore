@@ -13,3 +13,7 @@ __pycache__/
 
 # 4. Jupyter Notebook
 .ipynb_checkpoints/
+
+# 5. Data
+*.pdf
+*.csv
