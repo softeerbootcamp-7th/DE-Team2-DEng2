@@ -4,20 +4,22 @@ import re
 import time
 import logging
 import requests
-
+from zipfile import ZipFile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple, List
-from zipfile import ZipFile
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
+
+# slack_utils.py를 찾기 위해 상위 경로 추가
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from slack_utils import SlackNotifier
 
 # =========================
 # ENV
 # =========================
 load_dotenv()
-
 
 # =========================
 # Config
@@ -26,79 +28,46 @@ load_dotenv()
 class Config:
     detail_url: str = "https://www.data.go.kr/data/15083033/fileData.do"
     download_base_url: str = "https://www.data.go.kr/cmm/cmm/fileDownload.do"
-
     project_root: str = "data/restaurant"
-
     retries: int = 3
     retry_sleep_sec: int = 5
     timeout_sec: int = 60
-
     parquet_compression: str = "snappy"
     parquet_overwrite: bool = False
-
     skip_if_latest_quarter_exists: bool = True
     force_run: bool = False
-
     slack_webhook_url: Optional[str] = os.getenv("SLACK_WEBHOOK_URL")
 
-
 # =========================
-# Logging + Slack
+# Logger & Helpers
 # =========================
 def build_logger(log_file: Path) -> logging.Logger:
     logger = logging.getLogger("restaurant_extract")
     logger.setLevel(logging.INFO)
     logger.handlers.clear()
-
-    fmt = logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(message)s",
-        "%Y-%m-%d %H:%M:%S"
-    )
-
+    fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", "%Y-%m-%d %H:%M:%S")
+    
     sh = logging.StreamHandler(sys.stdout)
     sh.setFormatter(fmt)
-
     fh = logging.FileHandler(log_file, encoding="utf-8")
     fh.setFormatter(fmt)
-
+    
     logger.addHandler(sh)
     logger.addHandler(fh)
     return logger
 
-
-def slack_notify(webhook_url: Optional[str], text: str, logger: logging.Logger):
-    if not webhook_url:
-        logger.warning("SLACK_WEBHOOK_URL not set")
-        return
-    try:
-        r = requests.post(webhook_url, json={"text": text}, timeout=10)
-        if r.status_code >= 400:
-            logger.error(f"Slack notify failed: {r.status_code} {r.text}")
-    except Exception as e:
-        logger.error(f"Slack notify exception: {e}")
-
-
-# =========================
-# Path setup (Modified)
-# =========================
 def init_run_dirs(cfg: Config) -> dict:
-    # run 구분 없이 _work 밑에 바로 생성
     base = Path(cfg.project_root) / "_work"
-
     paths = {
         "base": base,
         "zips": base / "zips",
         "unzipped": base / "unzipped",
-        "log_file": base / "run.log",  # logs 폴더 대신 run.log 파일 직접 지정
+        "log_file": base / "run.log",
         "parquet_root": Path(cfg.project_root) / "parquet",
     }
-
-    # 디렉토리 생성 (zips, unzipped)
     paths["zips"].mkdir(parents=True, exist_ok=True)
     paths["unzipped"].mkdir(parents=True, exist_ok=True)
-
     return paths
-
 
 # =========================
 # Quarter helpers
@@ -287,49 +256,65 @@ def convert_csvs_to_parquet(cfg: Config, paths: dict, logger: logging.Logger, qu
     logger.info(f"Parquet conversion complete. Total {written} regions processed.")
     
     return written
+
+
 # =========================
-# Main
+# Main Logic
 # =========================
 def main():
     cfg = Config()
     paths = init_run_dirs(cfg)
     logger = build_logger(paths["log_file"])
     
-    logger.info("===== EXTRACT START =====")
+    # 1. 알리미 초기화
+    notifier = SlackNotifier(cfg.slack_webhook_url, "EXTRACT-식당정보", logger)
 
+    logger.info("===== EXTRACT START =====")
+    
     try:
-        # 0. 포털 데이터 날짜 및 분기 확인
+        # 0. 포털 데이터 날짜 확인
         latest_yyyymmdd = resolve_latest_dataset_yyyymmdd(cfg, logger)
         latest_quarter = yyyymmdd_to_quarter(latest_yyyymmdd)
+        
+        notifier.info("작업 시작", f"대상 분기: {latest_quarter} (Portal Date: {latest_yyyymmdd})")
 
         # [STEP 1] ZIP 확인 및 다운로드
         zip_path = paths["zips"] / "sme_store.zip"
         if zip_path.exists() and is_zip(zip_path) and not cfg.force_run:
-            logger.info(f">>> [CHECK 1] ZIP 파일이 이미 존재합니다. 다운로드 스킵.")
+            logger.warning("⏭ ZIP 파일이 이미 로컬에 존재하여 다운로드를 건너뜁니다.")
         else:
+            logger.info("🌐 공공데이터포털에서 ZIP 파일 다운로드 중...")
             zip_path = download_zip(cfg, paths, logger)
+            logger.info(f"✅ 다운로드 완료: {zip_path.name}")
 
         # [STEP 2] CSV 확인 및 압축 해제
         existing_csvs = list_csv_files(paths["unzipped"])
         if existing_csvs and not cfg.force_run:
-            logger.info(f">>> [CHECK 2] CSV 파일이 이미 존재합니다. 압축 해제 스킵.")
+            logger.warning("⏭ 압축 해제된 CSV가 이미 존재하여 Skip합니다.")
         else:
+            logger.info("🔓 압축 해제(Extract ZIP) 시작...")
             extract_zip(zip_path, paths, logger)
+            logger.info("✅ 압축 해제 완료")
 
         # [STEP 3] Parquet 확인 및 변환
         if (cfg.skip_if_latest_quarter_exists and not cfg.force_run 
             and latest_quarter_already_processed(cfg, paths, latest_quarter)):
-            logger.info(f">>> [CHECK 3] 최종 Parquet가 이미 존재합니다. 변환 스킵.")
-            n_parquet = "Existing"
+            logger.warning(f"⏭ {latest_quarter} Parquet 결과물이 이미 존재하여 변환을 건너뜁니다.")
+            n_parquet = "Skipped (Existing)"
         else:
-            n_parquet = convert_csvs_to_parquet(cfg, paths, logger, latest_quarter)
+            logger.info(f"📦 CSV -> Parquet 변환 및 지역별 파티셔닝 시작...")
+            written_count = convert_csvs_to_parquet(cfg, paths, logger, latest_quarter)
+            n_parquet = f"Success ({written_count} regions)"
+            logger.info(f"✅ 변환 완료: {n_parquet}")
 
-        logger.info(f"===== SUCCESS (dataset={latest_quarter}, status={n_parquet}) =====")
-        slack_notify(cfg.slack_webhook_url, f":white_check_mark: 상가정보 처리 완료 ({latest_quarter})", logger)
+        # [SUCCESS]
+        notifier.success("작업 완료", f"분기 데이터 처리가 완료되었습니다.\n*결과*: {n_parquet}")
+        logger.info(f"===== SUCCESS (status={n_parquet}) =====")
 
     except Exception as e:
-        logger.exception("===== EXTRACT FAILED =====")
-        slack_notify(cfg.slack_webhook_url, f":x: 실패\n{e}", logger)
+        # [CRITICAL ERROR]
+        logger.error(f"🚨 파이프라인 에러 발생: {str(e)}")
+        notifier.error("소상공인 상가정보 수집 중단", e)
         sys.exit(1)
 
 if __name__ == "__main__":
