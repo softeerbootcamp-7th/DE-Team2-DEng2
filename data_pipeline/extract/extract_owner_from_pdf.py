@@ -12,6 +12,19 @@ from tqdm import tqdm
 
 
 # =========================
+# 지번 분리
+# =========================
+def split_lot_number(lot: str):
+    lot = lot.strip()
+
+    if "-" in lot:
+        main, sub = lot.split("-", 1)
+        return main.strip(), sub.strip()
+
+    return lot.strip(), None  # ✅ 부번 없음 → NULL
+
+
+# =========================
 # OCR + crop + 이름 추출
 # =========================
 def extract_owner_from_crop(img, address, lot_num, page_idx):
@@ -75,8 +88,16 @@ def process_pdf(pdf_path):
         filename = Path(pdf_path).stem
         parts = filename.split("_")
 
-        base_addr = " ".join(parts[:-1])
-        lot_number = parts[-1]
+        if len(parts) < 3:
+            print("⚠ 파일명 형식 오류:", filename)
+            return None
+
+        # ✅ 주소 / 지번 / 날짜 파싱
+        base_addr = " ".join(parts[:-2])
+        lot_number = parts[-2]
+        changed_date = parts[-1]
+
+        main_no, sub_no = split_lot_number(lot_number)
 
         images = convert_from_path(pdf_path, dpi=250)
 
@@ -94,11 +115,17 @@ def process_pdf(pdf_path):
             if owner:
                 latest_owner = owner
 
-        # ✅ 지주 없으면 제외
+        # 지주 없으면 제외
         if not latest_owner:
             return None
 
-        return (base_addr, lot_number, latest_owner)
+        return (
+            base_addr,
+            main_no,
+            sub_no,
+            latest_owner,
+            changed_date
+        )
 
     except Exception as e:
 
@@ -121,7 +148,6 @@ def main():
         print("❌ pdf 폴더 경로가 존재하지 않음:", pdf_root)
         sys.exit(1)
 
-    # ✅ output 폴더 생성
     csv_output_dir = pdf_root.parent / "output_ocr"
     csv_output_dir.mkdir(exist_ok=True)
 
@@ -151,12 +177,22 @@ def main():
         return
 
     # ✅ DataFrame 생성
-    df = pd.DataFrame(results, columns=["주소", "지번", "지주"])
+    df = pd.DataFrame(
+        results,
+        columns=[
+            "주소",
+            "본번",
+            "부번",
+            "지주",
+            "소유권변동일자"
+        ]
+    )
 
-    # CSV 저장
+    # 부번 NULL 유지 (pandas nullable 타입)
+    df["부번"] = df["부번"].astype("object")
+
+    # 저장
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-
-    # Parquet 저장
     df.to_parquet(parquet_path, index=False)
 
     print("\n✅ 저장 완료:")

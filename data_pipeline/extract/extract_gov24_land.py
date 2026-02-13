@@ -86,7 +86,7 @@ def setup_logging(output_dir):
     logger.addHandler(fh)
     logger.addHandler(ch)
 
-    logging.info(f"📄 로그 파일 생성: {log_file}")
+    logging.info(f"로그 파일 생성: {log_file}")
 
     return log_file
 
@@ -110,17 +110,31 @@ def sanitize_filename(name: str) -> str:
 
     return name
 
-def rename_pdf_to_address(address: str) -> str:
-    safe_name = sanitize_filename(address) + ".pdf"
+def rename_pdf_to_address(addr: dict):
+
+    base = addr["base"]
+    main = addr["main"]
+    sub = addr["sub"]
+    date = addr["changed_date"]
+
+    if sub:
+        name = f"{base}_{main}-{sub}_{date}"
+    else:
+        name = f"{base}_{main}_{date}"
+
+    safe_name = sanitize_filename(name) + ".pdf"
+
     pdf_path = os.path.join(OUTPUT_DIR, ORIGINAL_FILE_NAME)
 
     new_path = os.path.join(
         os.path.dirname(pdf_path),
         safe_name
     )
+
     os.rename(pdf_path, new_path)
 
     return new_path
+
 
 def load_addresses_from_parquet_dir(dir_path, start_idx=0, end_idx=None):
     addresses = []
@@ -155,11 +169,15 @@ def load_addresses_from_parquet_dir(dir_path, start_idx=0, end_idx=None):
             else:
                 sub_no = bubun_list[0]
 
+            changed_date = str(row["소유권변동일자"]).strip()
+
             addresses.append({
                 "base": base_addr,
                 "main": bonbun,
-                "sub": sub_no
+                "sub": sub_no,
+                "changed_date": changed_date
             })
+
 
     # 인덱스 범위 처리
     if end_idx is None:
@@ -167,7 +185,7 @@ def load_addresses_from_parquet_dir(dir_path, start_idx=0, end_idx=None):
 
     sliced = addresses[start_idx:end_idx]
 
-    logging.info(f"✅ 총 주소 {len(addresses)}개 → 선택 {len(sliced)}개")
+    logging.info(f"총 주소 {len(addresses)}개 → 선택 {len(sliced)}개")
 
     return sliced
 
@@ -397,7 +415,7 @@ def fill_form(driver, address):
     ))) 
     selected_addr = addr_field.get_attribute("value") 
     
-    logging.info("선택된 주소:", selected_addr)
+    logging.info(f"선택된 주소: {selected_addr}")
 
     # 본 번지 입력
     main_input = wait.until(EC.element_to_be_clickable((
@@ -496,7 +514,7 @@ def run_land_register(driver, address):
 
     fill_form(driver, address)
     get_pdf(driver)
-    rename_pdf_to_address(build_full_address(address))
+    rename_pdf_to_address(address)
 
 
 # ============================================================
