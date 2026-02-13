@@ -44,10 +44,12 @@ def main():
     BUILDING_BASE = "/opt/spark/data/buildingLeader/parquet"
     TOJI_BASE     = "/opt/spark/data/tojiSoyuJeongbo/parquet"
     REST_BASE     = "/opt/spark/data/restaurant/parquet"
-        
+    REST_OWNER_BASE = "/opt/spark/data/restaurant_owner/parquet"
+
     building_path = f"{BUILDING_BASE}/year={prev_q_year}/month={prev_q_last_month:02d}"
     toji_path     = f"{TOJI_BASE}/year={prev_q_year}/month={prev_q_last_month:02d}"
     rest_path     = f"{REST_BASE}/dataset={prev_q_year}Q{prev_q}"
+    owner_path     = f"{REST_OWNER_BASE}/year={prev_q_year}/month={prev_q_last_month:02d}"
 
     # 4. 데이터 로드 및 지역 필터링
     # 우선 region으로 공통 필터링을 수행합니다.
@@ -59,6 +61,9 @@ def main():
 
     restaurant_df = spark.read.option("mergeSchema", "false").parquet(rest_path)
     restaurant_gg_df = restaurant_df.filter(F.col("region") == region)
+
+    owner_df = spark.read.option("mergeSchema", "false").parquet(owner_path)
+    owner_gg_df = owner_df.filter(F.col("region") == region)
 
     # sigungu_code가 인자로 들어온 경우에만 추가 필터링 수행
     if sigungu_code:
@@ -109,10 +114,38 @@ def main():
     restaurant_gg_df = restaurant_gg_df \
         .filter(F.col("상권업종대분류명") == "음식") \
         .select(
-            "상호명", "지점명", "도로명", "상권업종대분류명", 
+            "상호명", "지점명", "도로명주소", "상권업종대분류명", 
             "상권업종중분류명", "상권업종소분류명", "지번코드",
             F.col("경도").cast("double"), F.col("위도").cast("double")
         )
+
+    # =========================
+    # Owner 소재지 괄호 제거 (맨 끝 "(...)"만 제거)
+    # =========================
+    owner_gg_df_clean = (
+        owner_gg_df
+        .select("소재지", "대표자")
+        .withColumn(
+            "소재지_정제",
+            F.regexp_replace(F.col("소재지"), r"\s*\([^)]*\)$", "")
+        )
+    )
+
+    # =========================
+    # Left join: restaurant.도로명 == owner.소재지_정제
+    # =========================
+    r = restaurant_gg_df.alias("r")
+    o = owner_gg_df_clean.alias("o")
+
+    restaurant_gg_df = (
+        r.join(
+            o,
+            F.col("r.도로명주소") == F.col("o.소재지_정제"),
+            how="left"
+        )
+        .drop("소재지", "소재지_정제")
+    )
+
 
     # 8. Join & Filtering
     t = toji_gg_df.alias("t")
@@ -126,7 +159,7 @@ def main():
 
     # 9. Restaurant Join
     toji_with_1_building_gg_df = toji_binary_building_gg_df.filter(F.col("관리_건축물대장_PK").isNotNull())
-    
+
     t_1 = toji_with_1_building_gg_df.alias("t")
     r = restaurant_gg_df.alias("r")
     toji_building_restaurant_gg_df = t_1.join(r, F.col("t.고유번호") == F.col("r.지번코드"), how="left") \
@@ -137,7 +170,8 @@ def main():
     toji_with_0_building_gg_df = toji_binary_building_gg_df.filter(F.col("관리_건축물대장_PK").isNull()) \
         .withColumn("상호명", F.lit(None).cast("string")) \
         .withColumn("지점명", F.lit(None).cast("string")) \
-        .withColumn("도로명", F.lit(None).cast("string")) \
+        .withColumn("대표자", F.lit(None).cast("string")) \
+        .withColumn("도로명주소", F.lit(None).cast("string")) \
         .withColumn("상권업종대분류명", F.lit(None).cast("string")) \
         .withColumn("상권업종중분류명", F.lit(None).cast("string")) \
         .withColumn("상권업종소분류명", F.lit(None).cast("string")) \

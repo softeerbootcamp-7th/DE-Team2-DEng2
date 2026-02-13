@@ -14,6 +14,8 @@ from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv  # 1. import 추가
 
 import argparse
+from datetime import datetime
+import pandas as pd
 
 # 2. .env 로드 (프로젝트 루트 경로 명시)
 # 현재 파일: data_pipeline/extract/extract_restaurant_owner.py
@@ -206,8 +208,20 @@ def search_and_save_all_pages(
 
                     for i in range(row_count):
                         cells = rows.nth(i).locator("td")
-                        row_data = [cells.nth(c).text_content().strip() for c in range(min(cells.count(), len(HEADERS)))]
-                        # 모바일 레이블 제거 로직 포함 (기존 로직 유지)
+                        row_data = []
+
+                        for c in range(min(cells.count(), len(HEADERS))):
+                            # 1. 일단 텍스트를 가져옵니다 (결과: "번호5527")
+                            raw_text = cells.nth(c).text_content().strip()
+
+                            # 2. 정규표현식으로 시작 부분에 있는 Header 이름을 지웁니다.
+                            # 예: "번호5527" -> "5527"
+                            # ^ 기호는 문자열의 시작부분을 의미합니다.
+                            header_name = HEADERS[c]
+                            clean_val = re.sub(f"^{header_name}", "", raw_text).strip()
+
+                            row_data.append(clean_val)
+
                         writer.writerow(row_data)
 
                     logger.info(f"진행 중: {page_num}/{total_pages} 페이지 완료")
@@ -227,38 +241,58 @@ def search_and_save_all_pages(
         raise e
 
 def main():
-    # 1. 명령행 인자 파서 설정
-    parser = argparse.ArgumentParser(description="식품안전나라 식당 대표자 정보 크롤러")
-    
-    # 필수 인자 설정
-    parser.add_argument("--sido", type=str, default="경기도", help="시도 명칭 (기본값: 경기도)")
-    parser.add_argument("--addr", type=str, default="용인시 처인구", help="상세 주소 (기본값: 용인시 처인구)")
-
-    # 선택 인자 (필요 시 Config 값을 덮어쓰기 위함)
-    parser.add_argument("--headless", type=bool, default=True, help="브라우저 숨김 여부 (기본값: True)")
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--sido", type=str, default="경기도")
+    parser.add_argument("--addr", type=str, default="용인시 처인구")
     args = parser.parse_args()
 
-    # 2. 설정 및 경로 준비
-    cfg = Config(headless=args.headless)
-    log_dir = Path(cfg.project_root)
-    log_dir.mkdir(parents=True, exist_ok=True)
-    
-    # 로그 파일명을 지역별로 다르게 하면 관리가 편합니다.
-    logger = build_logger(log_dir / f"run_{args.sido}_{args.addr.replace(' ', '_')}.log")
-    
-    # 저장 파일명 설정
-    output_file = log_dir / f"{args.sido}_{args.addr.replace(' ', '_')}_restaurant_owner.csv"
+    # 1. 경로 및 파티션 설정
+    now = datetime.now()
+    year = now.strftime("%Y")
+    month = now.strftime("%m")
+    region = args.sido[:2] 
 
-    # 3. 실행
-    logger.info(f"🚀 크롤링 프로세스 시작 (인자: {args.sido}, {args.addr})")
-    search_and_save_all_pages(
-        sido_name=args.sido,
-        address=args.addr,
-        cfg=cfg,
-        logger=logger,
-        output_file=output_file
-    )
+    base_path = Path(Config.project_root)
+    work_dir = base_path / "_work"
+    parquet_dir = base_path / f"parquet/year={year}/month={month}/region={region}"
+
+    work_dir.mkdir(parents=True, exist_ok=True)
+    parquet_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_addr = args.addr.replace(" ", "_")
+    log_file = work_dir / f"run_{region}_{safe_addr}.log"
+    csv_file = work_dir / f"{region}_{safe_addr}.csv"
+    parquet_file = parquet_dir / f"{region}_{safe_addr}.parquet"
+
+    logger = build_logger(log_file)
+
+    # 2. 크롤링 단계 (CSV 존재 여부 체크)
+    if csv_file.exists():
+        logger.info(f"⏭️  이미 CSV 파일이 존재합니다. 크롤링을 건너뜁니다: {csv_file.name}")
+    else:
+        logger.info(f"🚀 크롤링 시작: {args.sido} {args.addr}")
+        search_and_save_all_pages(
+            sido_name=args.sido,
+            address=args.addr,
+            cfg=Config(),
+            logger=logger,
+            output_file=csv_file
+        )
+
+    # 3. 변환 단계 (Parquet 존재 여부 체크)
+    if parquet_file.exists():
+        logger.info(f"⏭️  이미 Parquet 파일이 존재합니다. 변환을 건너뜁니다: {parquet_file.name}")
+    elif csv_file.exists():
+        try:
+            logger.info("📄 CSV를 Parquet로 변환 중...")
+            df = pd.read_csv(csv_file)
+            # 데이터 추출 시 발생했던 헤더 중복 이슈 등을 한 번 더 방어적으로 처리
+            df.to_parquet(parquet_file, engine='pyarrow', index=False, compression='snappy')
+            logger.info(f"✅ 변환 완료: {parquet_file}")
+        except Exception as e:
+            logger.error(f"❌ Parquet 변환 실패: {e}")
+    else:
+        logger.error("⚠️ 변환할 CSV 파일이 없어 프로세스를 종료합니다.")
 
 if __name__ == "__main__":
     main()
