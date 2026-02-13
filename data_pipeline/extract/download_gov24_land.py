@@ -5,7 +5,6 @@
 WAIT_SHORT = 3
 WAIT_NORMAL = 10
 
-OUTPUT_DIR = "./data/tojidaejang"
 ORIGINAL_FILE_NAME = "정부24 - 토지(임야)대장 등본 발급(열람) _ 문서출력.pdf"
 
 # ============================================================
@@ -42,7 +41,7 @@ def slack_notify(text: str, webhook_url: Optional[str] = None):
     webhook_url = webhook_url or os.getenv("SLACK_WEBHOOK_URL")
 
     if not webhook_url:
-        logging.info("⚠ Slack webhook 없음:", text)
+        logging.info(f"⚠ Slack webhook 없음: {text}")
         return
 
     payload = {"text": text}
@@ -60,7 +59,7 @@ def slack_notify(text: str, webhook_url: Optional[str] = None):
         logging.info("✅ Slack 알림 전송 완료")
 
     except Exception as e:
-        logging.info("⚠ Slack 전송 실패:", e)
+        logging.info(f"⚠ Slack 전송 실패: {e}")
 
 def setup_logging(output_dir):
     log_dir = os.path.join(output_dir, "logs")
@@ -531,13 +530,15 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--output_dir",
-        default="./data/tojidaejang",
-        help="토지대장 pdf가 저장될 폴더 경로 (기본 경로: ../../data/jogidaejang)"
+        default="./data/tojidaejang/_work",
+        help="토지대장 pdf가 저장될 폴더 경로 (기본 경로: ./data/togidaejang/_work)"
     )
 
     args = parser.parse_args()
 
-    OUTPUT_DIR = args.output_dir
+    global OUTPUT_DIR
+
+    OUTPUT_DIR = os.path.join(args.output_dir, "output")
 
     setup_logging(OUTPUT_DIR)
 

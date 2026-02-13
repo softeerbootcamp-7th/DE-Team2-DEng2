@@ -1,32 +1,26 @@
 import os
 import re
 import csv
+import sys
 from pathlib import Path
 from multiprocessing import Pool, cpu_count
 
+import pandas as pd
 from pdf2image import convert_from_path
 import pytesseract
 from tqdm import tqdm
 
-# =========================
-# 설정
-# =========================
-PDF_ROOT = "pdf"
-OUTPUT_CSV = "land_owners.csv"
 
 # =========================
 # OCR + crop + 이름 추출
 # =========================
 def extract_owner_from_crop(img, address, lot_num, page_idx):
-    finish_flag = False
 
     img = img.rotate(90, expand=True)
 
     w, h = img.size
-
     candidates = []
 
-    # 슬라이딩 시작 위치
     y = 0.335
 
     while y <= 0.515:
@@ -38,12 +32,6 @@ def extract_owner_from_crop(img, address, lot_num, page_idx):
             int(h * (y + 0.025))
         ))
 
-        # crop = crop.resize((crop.width*2, crop.height*2))
-
-        # tmp 저장 (디버그용)
-        # tmp_path = Path("./tmp") / f"tmp_{address}_{lot_num}_p{page_idx}_{y:.3f}.png"
-        # crop.save(tmp_path)
-
         text = pytesseract.image_to_string(
             crop,
             lang="kor",
@@ -53,61 +41,51 @@ def extract_owner_from_crop(img, address, lot_num, page_idx):
         for line in text.split("\n"):
 
             line = line.strip()
-
             if not line:
                 continue
 
-            # "외 N인" 처리
-            # 예: 홍길동 외 2인 → 홍길동 추출
             match = re.search(r"([가-힣]+)\s*외\s*\d+\s*인", line)
-
             if match:
                 candidates.append(match.group(1))
                 continue
 
-            # 공백 있으면 후보 아님
             if " " in line:
                 continue
 
-            # 한글로 시작하지 않으면 후보 아님
             if not re.match(r"^[가-힣]", line):
                 continue
 
-            # 특수문자 있으면 후보 아님
             if re.search(r"[^가-힣]", line):
                 continue
-            
+
             candidates.append(line)
 
         y += 0.06
 
-    return (candidates[-1], finish_flag) if candidates else ("", finish_flag)
+    return candidates[-1] if candidates else ""
 
 
 # =========================
 # PDF 처리
 # =========================
 def process_pdf(pdf_path):
+
     try:
 
         filename = Path(pdf_path).stem
         parts = filename.split("_")
 
-        # base 주소 (지번 제외)
         base_addr = " ".join(parts[:-1])
-
-        # 지번
         lot_number = parts[-1]
 
         images = convert_from_path(pdf_path, dpi=250)
 
         latest_owner = ""
 
-        # 뒤에서부터 검사
-        for i in range(len(images)):
+        for i, img in enumerate(images):
 
-            owner, finish_flag = extract_owner_from_crop(
-                images[i],
+            owner = extract_owner_from_crop(
+                img,
                 base_addr,
                 lot_number,
                 i + 1
@@ -115,31 +93,45 @@ def process_pdf(pdf_path):
 
             if owner:
                 latest_owner = owner
-            
-            if finish_flag:
-                break
+
+        # ✅ 지주 없으면 제외
+        if not latest_owner:
+            return None
 
         return (base_addr, lot_number, latest_owner)
 
     except Exception as e:
 
         print("❌ 실패:", pdf_path, e)
+        return None
 
-        filename = Path(pdf_path).stem
-        parts = filename.split("_")
-
-        return (
-            " ".join(parts[:-1]),
-            parts[-1],
-            ""
-        )
 
 # =========================
 # 메인 실행
 # =========================
 def main():
 
-    pdf_files = list(Path(PDF_ROOT).rglob("*.pdf"))
+    if len(sys.argv) < 2:
+        print("사용법: python parsing_pdf.py <pdf_folder>")
+        sys.exit(1)
+
+    pdf_root = Path(sys.argv[1]).resolve()
+
+    if not pdf_root.exists():
+        print("❌ pdf 폴더 경로가 존재하지 않음:", pdf_root)
+        sys.exit(1)
+
+    # ✅ output 폴더 생성
+    csv_output_dir = pdf_root.parent / "output_ocr"
+    csv_output_dir.mkdir(exist_ok=True)
+
+    parquet_output_dir = pdf_root.parent.parent / "parquet"
+    parquet_output_dir.mkdir(exist_ok=True)
+
+    csv_path = csv_output_dir / "ocr_result.csv"
+    parquet_path = parquet_output_dir / "ocr_result.parquet"
+
+    pdf_files = list(pdf_root.rglob("*.pdf"))
 
     print(f"\n📄 PDF 발견: {len(pdf_files)}개")
 
@@ -147,18 +139,29 @@ def main():
 
     with Pool(workers) as pool:
 
-        results = list(tqdm(
-            pool.imap(process_pdf, pdf_files),
-            total=len(pdf_files)
+        results = list(filter(
+            None,
+            tqdm(
+                pool.imap(process_pdf, pdf_files),
+                total=len(pdf_files)
+            )
         ))
 
-    with open(OUTPUT_CSV, "w", newline="", encoding="utf-8-sig") as f:
+    if not results:
+        return
 
-        writer = csv.writer(f)
-        writer.writerow(["주소", "지번", "지주"])
-        writer.writerows(results)
+    # ✅ DataFrame 생성
+    df = pd.DataFrame(results, columns=["주소", "지번", "지주"])
 
-    print("\n✅ CSV 저장 완료:", OUTPUT_CSV)
+    # CSV 저장
+    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+
+    # Parquet 저장
+    df.to_parquet(parquet_path, index=False)
+
+    print("\n✅ 저장 완료:")
+    print("CSV:", csv_path)
+    print("Parquet:", parquet_path)
 
 
 # =========================
