@@ -8,15 +8,18 @@ def main():
     # 1. Command Line Arguments 설정
     parser = argparse.ArgumentParser(description="Spark Silver Stage 1 Processing")
     parser.add_argument("--region", type=str, default="경기", help="지역명 (기본값: 경기)")
-    parser.add_argument("--sigungu_code", type=str, default="41461", help="시군구코드 5자리 (기본값: 41461)")
+    # default를 None으로 설정하여 입력이 없을 경우를 대비합니다.
+    parser.add_argument("--sigungu_code", type=str, default=None, help="시군구코드 5자리 (입력 안 할 시 지역 전체)")
     args = parser.parse_args()
 
     region = args.region
     sigungu_code = args.sigungu_code
 
     # 2. Spark Session 설정
+    # 앱 이름에 sigungu_code가 없을 경우 'all'로 표시
+    app_sigungu = sigungu_code if sigungu_code else "all"
     spark = SparkSession.builder \
-        .appName(f'silver_stage_1_{region}_{sigungu_code}') \
+        .appName(f'silver_stage_1_{region}_{app_sigungu}') \
         .master("spark://spark-master:7077") \
         .config("spark.sql.adaptive.enabled", "true") \
         .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
@@ -46,21 +49,22 @@ def main():
     toji_path     = f"{TOJI_BASE}/year={prev_q_year}/month={prev_q_last_month:02d}"
     rest_path     = f"{REST_BASE}/dataset={prev_q_year}Q{prev_q}"
 
-    # 4. 데이터 로드 및 필터링
+    # 4. 데이터 로드 및 지역 필터링
+    # 우선 region으로 공통 필터링을 수행합니다.
     building_df = spark.read.option("mergeSchema", "false").parquet(building_path)
-    building_gg_df = building_df \
-        .filter(F.col("region") == region) \
-        .filter(F.col("시군구_코드") == sigungu_code)
+    building_gg_df = building_df.filter(F.col("region") == region)
 
     toji_df = spark.read.option("mergeSchema", "false").parquet(toji_path)
-    toji_gg_df = toji_df \
-        .filter(F.col("region") == region) \
-        .filter(F.col("법정동코드").startswith(sigungu_code))
+    toji_gg_df = toji_df.filter(F.col("region") == region)
 
     restaurant_df = spark.read.option("mergeSchema", "false").parquet(rest_path)
-    restaurant_gg_df = restaurant_df \
-        .filter(F.col("region") == region) \
-        .filter(F.col("법정동코드").startswith(sigungu_code))
+    restaurant_gg_df = restaurant_df.filter(F.col("region") == region)
+
+    # sigungu_code가 인자로 들어온 경우에만 추가 필터링 수행
+    if sigungu_code:
+        building_gg_df = building_gg_df.filter(F.col("시군구_코드") == sigungu_code)
+        toji_gg_df = toji_gg_df.filter(F.col("법정동코드").startswith(sigungu_code))
+        restaurant_gg_df = restaurant_gg_df.filter(F.col("법정동코드").startswith(sigungu_code))
 
     # 5. Building Pruning
     building_gg_df = building_gg_df.withColumn(
@@ -153,15 +157,18 @@ def main():
         how="left_anti"
     )
 
-    # 11. 메인 결과 저장
+    # 11. 메인 결과 저장 경로 설정
+    # sigungu_code가 없으면 경로명을 'all'로 지정하여 덮어쓰기 방지 및 명확성 확보
+    sigungu_dir = sigungu_code if sigungu_code else "all"
     out_base = "/opt/spark/data/output/silver_stage_1"
-    main_out_path = f"{out_base}/main/region={region}/sigungu={sigungu_code}/year={prev_q_year}/month={prev_q_last_month:02d}"
+
+    main_out_path = f"{out_base}/main/region={region}/sigungu={sigungu_dir}/year={prev_q_year}/month={prev_q_last_month:02d}"
 
     clean_final_toji_df.write.mode("overwrite").parquet(main_out_path)
     print(f"[SUCCESS] Main data saved to: {main_out_path}")
 
-    # 12. 부산물 저장 (법정동명, 본번, 소유권변동일자로 그룹화하여 부번 리스트 생성)
-    byproduct_out_path = f"{out_base}/byproduct/region={region}/sigungu={sigungu_code}/year={prev_q_year}/month={prev_q_last_month:02d}"
+    # 12. 부산물 저장
+    byproduct_out_path = f"{out_base}/byproduct/region={region}/sigungu={sigungu_dir}/year={prev_q_year}/month={prev_q_last_month:02d}"
 
     byproduct_df = (
         clean_final_toji_df

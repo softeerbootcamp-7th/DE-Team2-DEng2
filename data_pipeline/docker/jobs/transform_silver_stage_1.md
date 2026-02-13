@@ -34,8 +34,13 @@
 5. **부산물 생성 (Byproduct)**: (법정동명, 본번, 소유권변동일자)가 동일한 레코드들을 그룹화하고, 해당 그룹에 속한 부번들을 리스트(`collect_list`)로 모아 별도 저장합니다.
 
 ## 4. 실행 가이드 (Usage)
-본 스크립트는 `spark-submit`을 통해 실행 가능하며, 기본 인자(Default)가 설정되어 있습니다.
+본 스크립트는 `spark-submit`을 통해 실행하며, 특정 시군구만 처리하거나 해당 지역(Region) 전체를 처리할 수 있도록 설계되었습니다.
 
-### 4.1 기본 실행 (용인시 처인구 기준)
+### 4.1 전체 지역 실행 (Region 단위)
+`--sigungu_code` 인자를 생략하면 입력된 `--region`에 해당하는 전체 데이터를 처리합니다. 결과는 `sigungu=all` 경로에 저장됩니다.
+
 ```bash
-docker exec -it spark-master spark-submit /opt/spark/jobs/make_silver_stage_1.py --region "경기" --sigungu_code "41461"
+# 경기도 전체 데이터 처리 예시
+docker exec -it spark-master spark-submit \
+    /opt/spark/jobs/transform_silver_stage_1.py \
+    --region "경기"
