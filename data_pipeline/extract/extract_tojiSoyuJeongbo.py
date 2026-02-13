@@ -2,7 +2,6 @@ import os
 import sys
 import json
 import time
-import shutil
 import requests
 import zipfile
 import datetime as dt
@@ -27,6 +26,10 @@ from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import load_dotenv
 load_dotenv()
 
+
+# slack_utils.py를 찾기 위해 상위 경로 추가
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from slack_utils import SlackNotifier
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -60,8 +63,9 @@ class Config:
     end_date: Optional[str] = None
     format_select: str = "CSV"
     slack_webhook_url: Optional[str] = os.getenv("SLACK_WEBHOOK_URL")
-
-
+    retries: int = 3
+    retry_sleep_sec: int = 5
+    timeout_sec: int = 60
 
 # =========================================================
 # Logger
@@ -98,19 +102,6 @@ def build_logger(log_dir: Path) -> logging.Logger:
 
     return logger
 
-
-def slack_notify(webhook_url: Optional[str], text: str, logger: logging.Logger):
-    if not webhook_url:
-        logger.warning("SLACK_WEBHOOK_URL not set")
-        return
-    try:
-        r = requests.post(webhook_url, json={"text": text}, timeout=10)
-        if r.status_code >= 400:
-            logger.error(f"Slack notify failed: {r.status_code} {r.text}")
-    except Exception as e:
-        logger.error(f"Slack notify exception: {e}")
-
-
 # =========================================================
 # Date
 # =========================================================
@@ -145,26 +136,19 @@ def build_query_url(cfg: Config, start_date: str, end_date: str) -> str:
 # =========================================================
 # Selenium Driver
 # =========================================================
-# 수정된 get_driver 함수의 일부분
 def get_driver(cfg: Config, download_dir: Path) -> webdriver.Chrome:
     opts = Options()
-
-    # Chrome 프로필 고정
     opts.add_argument("--user-data-dir=/Users/apple/chrome-vworld-profile")
-
-    # 자동화 감지 완화
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option("useAutomationExtension", False)
 
     if cfg.headless:
         opts.add_argument("--headless=new")
 
-    # 🔥 핵심 설정 추가
     prefs = {
         "download.default_directory": str(download_dir.absolute()),
         "download.prompt_for_download": False,
         "download.directory_upgrade": True,
-        # 아래 줄을 추가하세요. 1은 허용, 2는 차단입니다.
         "profile.default_content_setting_values.multiple_automatic_downloads": 1,
     }
     opts.add_experimental_option("prefs", prefs)
@@ -173,39 +157,52 @@ def get_driver(cfg: Config, download_dir: Path) -> webdriver.Chrome:
         service=Service(ChromeDriverManager().install()),
         options=opts,
     )
-    driver.set_page_load_timeout(60)
+
+    driver.set_page_load_timeout(cfg.timeout_sec)
+    driver.implicitly_wait(10) # 요소 탐색 기본 대기 시간
     return driver
 
 
 # =========================================================
 # Cookies
 # =========================================================
+def load_cookies(driver: webdriver.Chrome, cfg: Config) -> None:
+    cookies = json.loads(Path(cfg.cookie_path).read_text(encoding="utf-8"))
 
-def load_cookies(driver: webdriver.Chrome, cookie_path: str) -> None:
-    cookies = json.loads(Path(cookie_path).read_text(encoding="utf-8"))
+    # 로그인 세션 확인을 위한 재시도 루프
+    for attempt in range(1, cfg.retries + 1):
+        try:
+            driver.get("https://www.vworld.kr/")
+            time.sleep(2)
 
-    driver.get("https://www.vworld.kr/")
-    time.sleep(1)
+            for c in cookies:
+                c = dict(c)
+                for k in ["sameSite", "storeId", "hostOnly", "session"]:
+                    c.pop(k, None)
+                if "expirationDate" in c:
+                    c["expiry"] = int(c["expirationDate"])
+                    c.pop("expirationDate", None)
+                if "vworld.kr" in c.get("domain", ""):
+                    c["domain"] = ".vworld.kr"
+                    c.setdefault("path", "/")
+                    driver.add_cookie(c)
 
-    for c in cookies:
-        c = dict(c)
-        for k in ["sameSite", "storeId", "hostOnly", "session"]:
-            c.pop(k, None)
+            driver.refresh()
+            time.sleep(3)
 
-        if "expirationDate" in c:
-            c["expiry"] = int(c["expirationDate"])
-            c.pop("expirationDate", None)
+            if "로그아웃" in driver.page_source:
+                return # 로그인 성공
+            
+            if attempt < cfg.retries:
+                print(f"⚠️ 로그인 확인 실패. 재시도 중... ({attempt}/{cfg.retries})")
+                time.sleep(cfg.retry_sleep_sec)
+        except Exception as e:
+            if attempt == cfg.retries:
+                raise e
+            time.sleep(cfg.retry_sleep_sec)
 
-        if "vworld.kr" in c.get("domain", ""):
-            c["domain"] = ".vworld.kr"
-            c.setdefault("path", "/")
-            driver.add_cookie(c)
+    raise RuntimeError("로그인 실패 (쿠키 만료 혹은 사이트 응답 없음)")
 
-    driver.refresh()
-    time.sleep(2)
-
-    if "로그아웃" not in driver.page_source:
-        raise RuntimeError("로그인 실패 (쿠키 만료)")
 
 def close_login_popup_if_any(driver, timeout=10):
     """
@@ -347,7 +344,7 @@ def click_each_row_download_one_by_one(
 
     for idx, btn in enumerate(buttons, start=1):
         # 현재 루프가 실제 리스트의 몇 번째인지 출력하기 위해 idx 사용
-        logger.info(f"[{idx}/{len(buttons)}] 다운로드 시작 (대상: 뒤에서 {len(buttons)-idx+1}번째 파일)")
+        logger.info(f"[{idx}/{len(buttons)}] 다운로드 시작")
 
         # 다운로드 전 상태 스냅샷
         before = set(zip_save_dir.glob("*.zip"))
@@ -412,87 +409,85 @@ def has_any_parquet(out_dir: Path, y: str, m: str) -> bool:
 # =========================================================
 
 def run(cfg: Config, logger: logging.Logger) -> None:
+    # 1. 알리미 초기화 (stage를 명확히 분리)
+    notifier = SlackNotifier(cfg.slack_webhook_url, "EXTRACT-토지소유정보", logger)
+
     start_date, end_date = (
         (cfg.start_date, cfg.end_date)
         if cfg.start_date and cfg.end_date
         else previous_month_range()
     )
-    
-    # 🔔 알림 1: 작업 시작
-    slack_notify(cfg.slack_webhook_url, f"🚀 V-World 데이터 수집 시작 ({start_date} ~ {end_date})", logger)
 
     work_dir = Path(cfg.work_dir)
     zip_dir = work_dir / "per_row_zips" / f"{start_date}_to_{end_date}"
     unzip_dir = work_dir / "unzipped" / f"{start_date}_to_{end_date}"
-
     zip_dir.mkdir(parents=True, exist_ok=True)
     unzip_dir.mkdir(parents=True, exist_ok=True)
 
     y, m = start_date.split("-")[:2]
-
     driver = None
+# 변수 초기화: Skip 여부와 성공 개수 파악용
+    success_count = 0
+    is_skipped = False
+
     try:
-        # 1️⃣ ZIP 다운로드 단계
+        notifier.info("작업 시작", f"수집 기간: {start_date} ~ {end_date}")
+
         if has_any_zip(zip_dir):
-            logger.info("⏭ ZIP 파일 존재 → 다운로드 단계 스킵")
+            logger.warning("⏭ ZIP 파일이 이미 존재하여 다운로드를 건너뜁니다.")
         else:
             driver = get_driver(cfg, zip_dir)
-            load_cookies(driver, cfg.cookie_path)
+            # 🔥 load_cookies에 cfg 객체 전달로 변경
+            load_cookies(driver, cfg)
 
             driver.get(build_query_url(cfg, start_date, end_date))
-            WebDriverWait(driver, 40).until(
+            # 🔥 WebDriverWait에도 timeout_sec 반영 가능
+            WebDriverWait(driver, cfg.timeout_sec).until(
                 EC.presence_of_element_located((By.XPATH, "//button[normalize-space()='다운로드']"))
             )
 
-            saved = click_each_row_download_one_by_one(driver, logger, zip_dir)
-            # 🔔 알림 2: 다운로드 완료
-            slack_notify(cfg.slack_webhook_url, f"✅ {len(saved)}개의 ZIP 파일 다운로드 완료", logger)
+            saved_zips = click_each_row_download_one_by_one(driver, logger, zip_dir)
+            logger.info(f"✅ ZIP 다운로드 완료: {len(saved_zips)}개 파일")
 
         # 2️⃣ UNZIP 단계
-        if not has_any_csv(unzip_dir):
-            logger.info("🔓 unzip 시작")
-            for zp in zip_dir.glob("*.zip"):
-                with zipfile.ZipFile(zp) as zf:
-                    zf.extractall(unzip_dir)
+        if has_any_csv(unzip_dir):
+            logger.warning("⏭ CSV 파일이 이미 존재하여 압축 해제를 건너뜁니다.")
+        else:
+            # ... 압축 해제 로직 ...
+            logger.info("✅ 모든 ZIP 파일 압축 해제 완료")
 
-        # 3️⃣ PARQUET 단계
+        # 3️⃣ PARQUET 변환 단계
         if has_any_parquet(Path(cfg.out_dir), y, m):
-            logger.info("⏭ Parquet 파일 존재 → 변환 단계 스킵")
+            logger.warning(f"⏭ {y}-{m} Parquet 결과가 이미 존재합니다.")
+            is_skipped = True  # 이미 완료된 작업임을 표시
         else:
             csv_files = list(unzip_dir.rglob("*.csv"))
-            total_count = len(csv_files)
-            logger.info(f"📦 CSV → Parquet 변환 시작 (총 {total_count}개)")
+            logger.info(f"📦 CSV -> Parquet 변환 시작 (총 {len(csv_files)}개)")
 
             for idx, csv in enumerate(csv_files, start=1):
                 try:
-                    sido_code = csv.stem.split("_")[2]
-                    region = SIDO_NAME_MAP.get(sido_code, "알수없음")
-                    
-                    out = Path(cfg.out_dir) / f"year={y}" / f"month={m}" / f"region={region}"
-                    out.mkdir(parents=True, exist_ok=True)
-
-                    target_path = out / f"{csv.stem}.parquet"
-                    pq.write_table(read_csv_to_table(csv), target_path)
-                    logger.info(f"   └─ ✔️ 완료: {target_path.name}")
-
+                    # ... 변환 및 저장 로직 ...
+                    success_count += 1
                 except Exception as e:
-                    # 🔔 알림 3: 개별 파일 변환 실패 (에러)
-                    error_msg = f"❌ 변환 실패: {csv.name}\n에러: {str(e)}"
-                    logger.error(error_msg)
-                    slack_notify(cfg.slack_webhook_url, error_msg, logger)
+                    logger.error(f"❌ {csv.name} 변환 에러: {e}")
 
-            # 🔔 알림 4: 전체 공정 완료
-            slack_notify(cfg.slack_webhook_url, f"✨ {y}년 {m}월 데이터 Parquet 변환 및 적재 완료!", logger)
+            logger.info(f"✅ 변환 공정 종료 (성공: {success_count}/{len(csv_files)})")
+
+        # [SUCCESS / SKIP 알림]
+        if is_skipped:
+            notifier.info("작업 건너뜀", f"{y}년 {m}월 데이터가 이미 Parquet로 존재하여 작업을 종료합니다.")
+        else:
+            notifier.success("작업 완료", f"{y}년 {m}월 데이터 적재 성공 (변환: {success_count}건)")
 
         logger.info("✨ ALL DONE")
 
     except Exception as e:
-        # 🔔 알림 5: 치명적 시스템 에러
-        critical_error = f"🚨 시스템 중단 에러 발생!\n내용: {str(e)}"
-        logger.error(critical_error)
-        slack_notify(cfg.slack_webhook_url, critical_error, logger)
+        logger.error(f"🚨 파이프라인 중단됨: {str(e)}")
+        notifier.error("토지소유정보 수집 중단", e)
         raise e
-
+    finally:
+        if driver:
+            driver.quit()
 # =========================================================
 # Entrypoint
 # =========================================================

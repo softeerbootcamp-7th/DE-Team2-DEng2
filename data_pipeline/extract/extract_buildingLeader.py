@@ -16,6 +16,10 @@ from playwright.sync_api import sync_playwright
 
 import pandas as pd
 
+# slack_utils.py를 찾기 위해 상위 경로 추가
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from slack_utils import SlackNotifier
+
 # =========================
 # ENV
 # =========================
@@ -27,56 +31,34 @@ load_dotenv()
 @dataclass
 class HubConfig:
     url: str = "https://www.hub.go.kr/portal/opn/lps/idx-lgcpt-pvsn-srvc-list.do"
-
     category_label: str = "건축물대장"
     service_keyword: str = "표제부"
     usage_reason_label: str = "참고자료"
-
     headless: bool = True
     retries: int = 3
     retry_sleep_sec: int = 5
     timeout_ms: int = 30_000
-
     work_dir: str = "data/buildingLeader/_work"
     slack_webhook_url: Optional[str] = os.getenv("SLACK_WEBHOOK_URL")
-
     unzip_txt_only: bool = True
 
-
 # =========================
-# Logging + Slack
+# Logging Helpers
 # =========================
 def build_logger(log_file: Path) -> logging.Logger:
     logger = logging.getLogger("hub_extract")
     logger.setLevel(logging.INFO)
     logger.handlers.clear()
-
-    fmt = logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(message)s",
-        "%Y-%m-%d %H:%M:%S"
-    )
-
+    fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", "%Y-%m-%d %H:%M:%S")
+    
     sh = logging.StreamHandler(sys.stdout)
     sh.setFormatter(fmt)
     fh = logging.FileHandler(log_file, encoding="utf-8")
     fh.setFormatter(fmt)
-
+    
     logger.addHandler(sh)
     logger.addHandler(fh)
     return logger
-
-
-def slack_notify(webhook_url: Optional[str], text: str, logger: logging.Logger):
-    if not webhook_url:
-        logger.warning("SLACK_WEBHOOK_URL not set")
-        return
-    try:
-        r = requests.post(webhook_url, json={"text": text}, timeout=10)
-        if r.status_code >= 400:
-            logger.error(f"Slack notify failed: {r.status_code} {r.text}")
-    except Exception as e:
-        logger.error(f"Slack notify exception: {e}")
-
 
 # =========================
 # FS Helpers
@@ -198,30 +180,30 @@ def txt_to_parquet_by_region(
 
     for i, df in enumerate(reader):
         df['대지_위치'] = df['대지_위치'].fillna('')
-        
+
         # 1. 첫 단어 추출 (ex: '서울특별시', '전북특별자치도')
         df['raw_sido'] = df['대지_위치'].str.split().str[0].str.strip()
-        
+
         # 2. 지명 매핑 (ex: '서울특별시' -> '서울')
         # SIDO_MAP에 없는 것(외국, 번지수 등)은 NaN이 됨
         df['sido'] = df['raw_sido'].map(SIDO_MAP)
-        
+
         # 3. 외국 및 번지수 데이터 필터링 (NaN 제거)
         valid_df = df.dropna(subset=['sido']).copy()
-        
+
         if valid_df.empty: continue
 
         for sido, group in valid_df.groupby('sido'):
             target_dir = parquet_root / f"year={year}" / f"month={month:02d}" / f"region={sido}"
             target_dir.mkdir(parents=True, exist_ok=True)
-            
+
             out_path = target_dir / f"part-{i:05d}.parquet"
             # 보조 컬럼 제거 후 저장
             save_df = group.drop(columns=['raw_sido'])
             save_df.to_parquet(out_path, index=False, engine='pyarrow')
 
 # =========================
-# Main
+# Main Logic
 # =========================
 def run(cfg: HubConfig):
     # 경로 설정
@@ -230,13 +212,14 @@ def run(cfg: HubConfig):
     unzip_dir = base_path / "unzipped"
     parquet_root = Path("data/buildingLeader/parquet")
 
-    # 필요 디렉토리 생성
     for d in [zip_dir, unzip_dir, parquet_root]:
         d.mkdir(parents=True, exist_ok=True)
 
-    console_logger = logging.getLogger("console")
-    console_logger.setLevel(logging.INFO)
-    console_logger.addHandler(logging.StreamHandler(sys.stdout))
+    # 로거 및 알리미 초기화
+    logger = build_logger(base_path / "run.log")
+    notifier = SlackNotifier(cfg.slack_webhook_url, "EXTRACT-건축물대장", logger)
+
+    logger.info("===== EXTRACT START =====")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=cfg.headless)
@@ -245,39 +228,36 @@ def run(cfg: HubConfig):
         page.set_default_timeout(cfg.timeout_ms)
 
         try:
-            console_logger.info("Open page and search")
+            # [START] 페이지 접속 및 검색
+            logger.info(f"🌐 페이지 접속 중: {cfg.url}")
             page.goto(cfg.url, wait_until="domcontentloaded")
 
-            # 검색 로직
             page.locator("select").filter(has=page.locator(f"option:has-text('{cfg.category_label}')")).select_option(label=cfg.category_label)
             page.locator("input[type='text']").first.fill(cfg.service_keyword)
             page.get_by_role("button", name="검색").click()
 
-            # 결과 행 찾기
             page.wait_for_selector(f"text={cfg.service_keyword}")
             row = page.locator(f"text={cfg.service_keyword}").first
             container = row
             for _ in range(8):
                 if "데이터제공년월" in container.inner_text(): break
                 container = container.locator("xpath=..")
-            
-            data_year, data_month = parse_actual_data_year_month(container)
-            console_logger.info(f"Target Period: {data_year}-{data_month:02d}")
 
-            # -------------------------------------------------------
-            # [단계 1] ZIP 확인 및 다운로드
-            # -------------------------------------------------------
+            data_year, data_month = parse_actual_data_year_month(container)
+            notifier.info("작업 시작", f"대상 기간: {data_year}년 {data_month:02d}월")
+
+            # [STEP 1] ZIP 확인 및 다운로드
             zip_path = None
             existing_zips = list(zip_dir.glob("*.zip"))
             existing_txts = list(unzip_dir.glob("*.txt"))
 
             if existing_txts:
-                console_logger.info(f"[SKIP] Txt files already exist in {unzip_dir}")
+                logger.warning(f"⏭ TXT 파일이 이미 존재하여 다운로드를 건너뜁니다.")
             elif existing_zips:
                 zip_path = existing_zips[0]
-                console_logger.info(f"[SKIP] Zip already exists: {zip_path}")
+                logger.warning(f"⏭ ZIP 파일이 이미 존재하여 다운로드를 건너뜁니다.")
             else:
-                console_logger.info("No local files. Downloading...")
+                logger.info("💾 브라우저를 통해 전체 데이터 다운로드 시작...")
                 download_btn = None
                 tmp = container
                 for _ in range(6):
@@ -297,60 +277,40 @@ def run(cfg: HubConfig):
                 download = dl_info.value
                 zip_path = zip_dir / download.suggested_filename
                 download.save_as(zip_path)
-                console_logger.info(f"Downloaded zip: {zip_path}")
+                logger.info(f"✅ 다운로드 완료: {zip_path.name}")
 
-            # -------------------------------------------------------
-            # [단계 2] TXT 확인 및 압축 해제
-            # -------------------------------------------------------
+            # [STEP 2] 압축 해제
             if not existing_txts:
-                if not zip_path or not zip_path.exists():
-                    raise FileNotFoundError("압축을 풀 Zip 파일이 없습니다.")
-                
-                console_logger.info(f"Unzipping {zip_path.name}...")
-                logger = build_logger(base_path / "run.log")
+                logger.info("🔓 압축 해제(Unzip) 시작...")
                 unzip_zip(zip_path, unzip_dir, cfg.unzip_txt_only, logger)
                 existing_txts = list(unzip_dir.glob("*.txt"))
+                logger.info(f"✅ 압축 해제 완료 ({len(existing_txts)}개 TXT)")
             else:
-                console_logger.info(f"[SKIP] Txt already exists. Skipping unzip.")
+                logger.warning("⏭ TXT가 이미 존재하여 압축 해제를 건너뜁니다.")
 
-            # -------------------------------------------------------
-            # [단계 3] Parquet 최종 확인 (변환 직전)
-            # -------------------------------------------------------
+            # [STEP 3] Parquet 변환 및 최종 확인
             if parquet_already_exists(parquet_root, data_year, data_month):
-                msg = f"[SKIP] {data_year}-{data_month:02d} Parquet 결과물이 이미 존재합니다."
-                console_logger.info(msg)
-                slack_notify(cfg.slack_webhook_url, msg, console_logger)
-                browser.close()
-                return
-
-            # -------------------------------------------------------
-            # [단계 4] 변환 실행
-            # -------------------------------------------------------
-            if not existing_txts:
-                raise FileNotFoundError("변환할 Txt 파일이 없습니다.")
-
-            logger = build_logger(base_path / "run.log")
-            for txt_file in existing_txts:
-                if txt_file.stat().st_size == 0: continue
-                logger.info(f"Converting {txt_file.name} to Parquet...")
-                txt_to_parquet_by_region(txt_file, parquet_root, data_year, data_month)
-
-            ok_msg = f"[OK] {data_year}-{data_month:02d} 데이터 처리 및 지역별 파티셔닝 완료"
-            console_logger.info(ok_msg)
-            slack_notify(cfg.slack_webhook_url, ok_msg, console_logger)
+                logger.warning(f"⏭ {data_year}-{data_month:02d} Parquet 결과가 이미 존재합니다.")
+                notifier.info("작업 건너뜜", f"{data_year}-{data_month:02d} 데이터가 이미 처리되어 있습니다.")
+            else:
+                logger.info(f"📦 CSV(TXT) -> Parquet 변환 시작...")
+                for txt_file in existing_txts:
+                    if txt_file.stat().st_size == 0: continue
+                    txt_to_parquet_by_region(txt_file, parquet_root, data_year, data_month)
+                
+                # [SUCCESS]
+                notifier.success("작업 완료", f"{data_year}년 {data_month:02d}월 데이터 지역별 파티셔닝 완료")
+                logger.info("✅ 모든 변환 공정 완료")
 
             browser.close()
 
         except Exception as e:
-            err_msg = f"[FAIL] extract_buildingLeader\n{repr(e)}"
-            console_logger.error(err_msg)
-            slack_notify(cfg.slack_webhook_url, err_msg, console_logger)
+            # [CRITICAL ERROR]
+            logger.error(f"🚨 파이프라인 에러 발생: {str(e)}")
+            notifier.error("건축물대장 수집 중단", e)
             if 'browser' in locals(): browser.close()
             raise
 
-# =========================
-# Entrypoint
-# =========================
 if __name__ == "__main__":
     cfg = HubConfig()
     run(cfg)
