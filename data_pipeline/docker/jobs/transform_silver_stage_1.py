@@ -196,13 +196,13 @@ def main():
     sigungu_dir = sigungu_code if sigungu_code else "all"
     out_base = "/opt/spark/data/output/silver_stage_1"
 
-    main_out_path = f"{out_base}/main/region={region}/sigungu={sigungu_dir}/year={prev_q_year}/month={prev_q_last_month:02d}"
+    main_out_path = f"{out_base}/main/year={prev_q_year}/month={prev_q_last_month:02d}/region={region}/sigungu={sigungu_dir}"
 
     clean_final_toji_df.write.mode("overwrite").parquet(main_out_path)
     print(f"[SUCCESS] Main data saved to: {main_out_path}")
 
     # 12. 부산물 저장
-    byproduct_out_path = f"{out_base}/byproduct/region={region}/sigungu={sigungu_dir}/year={prev_q_year}/month={prev_q_last_month:02d}"
+    byproduct_out_path = f"{out_base}/byproduct/year={prev_q_year}/month={prev_q_last_month:02d}/region={region}/sigungu={sigungu_dir}"
 
     byproduct_df = (
         clean_final_toji_df
