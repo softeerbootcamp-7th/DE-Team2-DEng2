@@ -29,6 +29,7 @@ services:
     volumes:
       - ./jobs:/opt/spark/jobs
       - ../common:/opt/spark/common
+      - ../../api:/opt/spark/api
       - ../../data:/opt/spark/data
       - ./spark-events:/opt/spark/spark-events
       - ./logs:/opt/spark/logs
@@ -65,6 +66,7 @@ services:
     volumes:
       - ./jobs:/opt/spark/jobs
       - ../common:/opt/spark/common
+      - ../../api:/opt/spark/api
       - ../../data:/opt/spark/data
       - ./spark-events:/opt/spark/spark-events
       - ./logs:/opt/spark/logs
@@ -101,6 +103,7 @@ services:
     volumes:
       - ./jobs:/opt/spark/jobs
       - ../common:/opt/spark/common
+      - ../../api:/opt/spark/api
       - ../../data:/opt/spark/data
       - ./spark-events:/opt/spark/spark-events
       - ./logs:/opt/spark/logs
@@ -125,6 +128,7 @@ services:
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-}
     volumes:
       - ../common:/opt/spark/common
+      - ../../api:/opt/spark/api
       - ./spark-events:/opt/spark/spark-events
     networks:
       - spark-network
@@ -159,6 +163,7 @@ services:
     volumes:
       - ./notebooks:/opt/spark/notebooks
       - ../common:/opt/spark/common
+      - ../../api:/opt/spark/api
       - ../../data:/opt/spark/data
       - ./spark-events:/opt/spark/spark-events
     networks:

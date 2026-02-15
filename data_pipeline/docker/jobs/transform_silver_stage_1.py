@@ -16,7 +16,7 @@ for common_dir in COMMON_DIR_CANDIDATES:
         sys.path.insert(0, str(common_dir))
 
 from s3_common import build_data_root, configure_s3a_for_spark
-from postgres_orm import store_silver_stage_1
+from upload_data_to_postgres import store_silver_stage_1
 
 
 def main():

@@ -1,99 +1,24 @@
 import math
-import os
+import sys
+from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
-from urllib.parse import quote_plus
 
-from dotenv import load_dotenv
-from sqlalchemy import DateTime, Float, Integer, String, Text, create_engine, delete, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
 
 
-load_dotenv()
+# Spark container에서 /opt/spark/api 패키지를 import할 수 있도록 경로 보정
+PROJECT_ROOT_CANDIDATES = [
+    Path("/opt/spark"),
+    Path(__file__).resolve().parents[2],
+]
+for root in PROJECT_ROOT_CANDIDATES:
+    if root.exists() and str(root) not in sys.path:
+        sys.path.insert(0, str(root))
 
-
-class Base(DeclarativeBase):
-    pass
-
-
-class SilverStage1Main(Base):
-    __tablename__ = "silver_stage_1_main"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    source_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    source_month: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    region: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    sigungu: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-
-    pnu_code: Mapped[Optional[str]] = mapped_column(String(32))
-    legal_dong_name: Mapped[Optional[str]] = mapped_column(String(255))
-    lot_number: Mapped[Optional[str]] = mapped_column(String(64))
-    ownership_change_reason: Mapped[Optional[str]] = mapped_column(String(128))
-    ownership_change_date: Mapped[Optional[str]] = mapped_column(String(32))
-
-    land_area: Mapped[Optional[float]] = mapped_column(Float)
-    land_category: Mapped[Optional[str]] = mapped_column(String(32))
-    official_land_price: Mapped[Optional[float]] = mapped_column(Float)
-    main_lot_no: Mapped[Optional[str]] = mapped_column(String(16))
-    sub_lot_no: Mapped[Optional[str]] = mapped_column(String(16))
-
-    building_ledger_pk: Mapped[Optional[str]] = mapped_column(String(64))
-    outdoor_self_parking_area: Mapped[Optional[float]] = mapped_column(Float)
-
-    store_name: Mapped[Optional[str]] = mapped_column(String(255))
-    branch_name: Mapped[Optional[str]] = mapped_column(String(255))
-    owner_name: Mapped[Optional[str]] = mapped_column(String(255))
-    road_address: Mapped[Optional[str]] = mapped_column(String(512))
-
-    biz_category_large: Mapped[Optional[str]] = mapped_column(String(64))
-    biz_category_mid: Mapped[Optional[str]] = mapped_column(String(64))
-    biz_category_small: Mapped[Optional[str]] = mapped_column(String(128))
-
-    longitude: Mapped[Optional[float]] = mapped_column(Float)
-    latitude: Mapped[Optional[float]] = mapped_column(Float)
-
-    created_at = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
-
-
-def build_postgres_url(mode: str, db_url: Optional[str] = None, rds_sslmode: str = "require") -> str:
-    if db_url:
-        return db_url
-
-    if mode == "local":
-        host = os.getenv("LOCAL_PG_HOST", "postgres-local")
-        port = os.getenv("LOCAL_PG_PORT", "5432")
-        database = os.getenv("LOCAL_PG_DB", "deng2")
-        user = os.getenv("LOCAL_PG_USER", "deng2")
-        password = os.getenv("LOCAL_PG_PASSWORD", "deng2")
-        return (
-            f"postgresql+psycopg2://{quote_plus(user)}:{quote_plus(password)}"
-            f"@{host}:{port}/{database}"
-        )
-
-    if mode == "aws":
-        host = os.getenv("RDS_HOST")
-        port = os.getenv("RDS_PORT", "5432")
-        database = os.getenv("RDS_DB")
-        user = os.getenv("RDS_USER")
-        password = os.getenv("RDS_PASSWORD")
-        missing = [k for k, v in {
-            "RDS_HOST": host,
-            "RDS_DB": database,
-            "RDS_USER": user,
-            "RDS_PASSWORD": password,
-        }.items() if not v]
-        if missing:
-            raise ValueError(f"Missing required RDS env vars: {', '.join(missing)}")
-
-        return (
-            f"postgresql+psycopg2://{quote_plus(user)}:{quote_plus(password)}"
-            f"@{host}:{port}/{database}?sslmode={rds_sslmode}"
-        )
-
-    raise ValueError(f"Unsupported mode: {mode}")
+from api.db.init_db import init_db
+from api.db.session import create_engine_for_mode
+from api.models.silver_stage_1 import SilverStage1Main
 
 
 def _to_float(value) -> Optional[float]:
@@ -110,12 +35,13 @@ def _to_float(value) -> Optional[float]:
 
 def _flush_batches(
     session: Session,
-    model: Any,                             # ORM 클래스 (SilverStage1Main)
+    model: Any,
     mappings: Iterable[Dict[str, Any]],
     batch_size: int,
 ) -> int:
     batch: list[Dict[str, Any]] = []
     inserted = 0
+
     for mapping in mappings:
         batch.append(mapping)
         if len(batch) >= batch_size:
@@ -123,10 +49,12 @@ def _flush_batches(
             session.commit()
             inserted += len(batch)
             batch.clear()
+
     if batch:
         session.bulk_insert_mappings(model, batch)
         session.commit()
         inserted += len(batch)
+
     return inserted
 
 
@@ -140,10 +68,9 @@ def store_silver_stage_1(
     db_url: Optional[str] = None,
     batch_size: int = 2000,
     rds_sslmode: str = "require",
-) -> tuple[int, int]:
+) -> int:
     """
     Store Spark DataFrames into Postgres using SQLAlchemy ORM models.
-
     Existing rows for the same (year, month, region, sigungu) are deleted first.
 
     Spark DataFrame
@@ -159,11 +86,8 @@ def store_silver_stage_1(
     if batch_size <= 0:
         raise ValueError("batch_size must be > 0")
 
-    engine = create_engine(
-        build_postgres_url(mode=mode, db_url=db_url, rds_sslmode=rds_sslmode),
-        pool_pre_ping=True,  # 연결이 끊겼는지 미리 체크 (끊겼으면 재연결)
-    )
-    Base.metadata.create_all(engine) # 테이블이 없으면 CREATE TABLE 실행
+    engine = create_engine_for_mode(mode=mode, db_url=db_url, rds_sslmode=rds_sslmode)
+    init_db(mode=mode, db_url=db_url, rds_sslmode=rds_sslmode, engine=engine)
 
     main_cols = [
         "고유번호",
@@ -198,7 +122,6 @@ def store_silver_stage_1(
                 SilverStage1Main.sigungu == sigungu,
             )
         )
-
         session.commit()
 
         main_iter = (
@@ -234,7 +157,12 @@ def store_silver_stage_1(
             }
             for d in main_iter
         )
-        main_count = _flush_batches(session, SilverStage1Main, main_mappings, batch_size=batch_size)
+        inserted_count = _flush_batches(
+            session=session,
+            model=SilverStage1Main,
+            mappings=main_mappings,
+            batch_size=batch_size,
+        )
 
     engine.dispose()
-    return main_count
+    return inserted_count

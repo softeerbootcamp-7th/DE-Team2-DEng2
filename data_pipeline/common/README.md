@@ -20,4 +20,6 @@ Optional flags:
 Env vars required for RDS:
 - `RDS_HOST`, `RDS_PORT`, `RDS_DB`, `RDS_USER`, `RDS_PASSWORD`
 
+`data_pipeline/common/postgres_orm.py`는 Spark 적재(writer) 전용입니다.
+테이블 스키마/초기화/조회 쿼리는 `api/` 하위 모듈에서 관리합니다.
 

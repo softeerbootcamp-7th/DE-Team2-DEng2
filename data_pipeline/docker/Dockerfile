@@ -14,9 +14,6 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 ARG TARGETARCH
 ENV SPARK_VERSION=4.1.1
 ENV HADOOP_VERSION=3
-ARG HADOOP_AWS_VERSION=3.4.1
-ARG AWS_SDK_V2_BUNDLE_VERSION=2.24.6
-ARG POSTGRES_JDBC_VERSION=42.7.4
 ENV SPARK_HOME=/opt/spark
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-${TARGETARCH}
 ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin:$JAVA_HOME/bin
@@ -27,7 +24,10 @@ RUN MIRROR_URL="https://mirror.kakao.com/apache/spark/spark-$SPARK_VERSION/spark
     (curl -fL "https://archive.apache.org/dist/spark/spark-$SPARK_VERSION/spark-$SPARK_VERSION-bin-hadoop$HADOOP_VERSION.tgz" | tar xz -C /opt) && \
     mv /opt/spark-$SPARK_VERSION-bin-hadoop$HADOOP_VERSION $SPARK_HOME
 
-# Pre-bundle required JARs to avoid runtime Maven download failures in containers.
+ARG HADOOP_AWS_VERSION=3.4.1
+ARG AWS_SDK_V2_BUNDLE_VERSION=2.24.6
+ARG POSTGRES_JDBC_VERSION=42.7.4
+
 RUN set -eux; \
     curl -fL -o /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar \
       https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VERSION}/hadoop-aws-${HADOOP_AWS_VERSION}.jar; \

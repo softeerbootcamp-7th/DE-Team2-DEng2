@@ -7,6 +7,7 @@ data/
 .venv/
 __pycache__/
 *.pyc
+.vscode
 
 # 3. OS 및 브라우저 관련
 .DS_Store
