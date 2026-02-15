@@ -4,6 +4,7 @@
 
 WAIT_SHORT = 3
 WAIT_NORMAL = 10
+RETRY = 1
 
 ORIGINAL_FILE_NAME = "정부24 - 토지(임야)대장 등본 발급(열람) _ 문서출력.pdf"
 
@@ -257,7 +258,7 @@ def go_to_land_register(driver):
     driver.execute_script("arguments[0].click();", link)
     wait.until(EC.url_contains("CappBizCD"))
 
-    logging.info("# 토지대장 페이지 이동 완료")
+    logging.debug("# 토지대장 페이지 이동 완료")
 
 
 def click_issue_button(driver):
@@ -288,13 +289,13 @@ def detect_login_page(driver):
 # ============================================================
 
 def click_search_popup(driver):
-    wait = WebDriverWait(driver, WAIT_NORMAL)
+    wait = WebDriverWait(driver, WAIT_SHORT)
 
     btn = wait.until(EC.element_to_be_clickable((By.ID, "btnAddress")))
     driver.execute_script("arguments[0].click();", btn)
 
 def search_address_popup(driver, base_addr):
-    wait = WebDriverWait(driver, WAIT_NORMAL)
+    wait = WebDriverWait(driver, WAIT_SHORT)
     main_window = driver.current_window_handle
 
     driver.switch_to.window(driver.window_handles[-1])
@@ -338,7 +339,7 @@ def close_modal_popup(driver):
                     "arguments[0].click();",
                     btn
                 )
-                logging.info("✅ Gov24 모달 팝업 닫음")
+                logging.debug("✅ Gov24 모달 팝업 닫음")
                 time.sleep(0.3)
 
     except Exception as e:
@@ -350,7 +351,7 @@ def close_modal_popup(driver):
 # ============================================================
 
 def select_form_options(driver):
-    wait = WebDriverWait(driver, WAIT_NORMAL)
+    wait = WebDriverWait(driver, WAIT_SHORT)
 
     # 대장 구분 = 토지 대장 
     land_radio = wait.until(EC.element_to_be_clickable(( 
@@ -401,7 +402,7 @@ def select_form_options(driver):
     """, delivery_radio)
 
 def fill_form(driver, address):
-    wait = WebDriverWait(driver, WAIT_NORMAL)
+    wait = WebDriverWait(driver, WAIT_SHORT)
 
     base, main_no, sub_no = address["base"], address["main"], address["sub"]
 
@@ -415,7 +416,7 @@ def fill_form(driver, address):
     ))) 
     selected_addr = addr_field.get_attribute("value") 
     
-    logging.info(f"선택된 주소: {selected_addr}")
+    logging.debug(f"선택된 주소: {selected_addr}")
 
     # 본 번지 입력
     main_input = wait.until(EC.element_to_be_clickable((
@@ -439,7 +440,7 @@ def fill_form(driver, address):
     apply_btn = wait.until(EC.presence_of_element_located((By.ID, "btn_end")))
     driver.execute_script("arguments[0].click();", apply_btn)
 
-    logging.info(f"✅ 신청 완료 ({build_full_address(address)})")
+    logging.debug(f"✅ 신청 완료 ({build_full_address(address)})")
 
 
 # ============================================================
@@ -568,25 +569,66 @@ if __name__ == "__main__":
 
     driver = build_chrome_driver(headless=False)
 
-    for idx, addr in enumerate(address_list, start=args.start):
-        try:
-            run_land_register(driver, addr)
-            logging.info(f"✅ 완료 idx:{idx} → {build_full_address(addr)}")
+    failures = []
 
-            time.sleep(1)
-            close_modal_popup(driver)
-            
-        except Exception as e:
+    for idx, addr in enumerate(address_list, start=args.start):
+
+        success = False
+
+        for attempt in range(RETRY + 1):
             try:
                 run_land_register(driver, addr)
-                logging.info(f"✅ 완료 idx:{idx} → {build_full_address(addr)}")
-            
+                logging.info(f"✅ 다운 완료 idx:{idx} → {build_full_address(addr)}")
+
                 time.sleep(1)
                 close_modal_popup(driver)
 
-            except Exception as e:
-                slack_notify(f"❌ 실패 idx:{idx} {build_full_address(addr)}\n{e}")
-                logging.error(f"에러 발생: {e}")
+                success = True
                 break
 
+            except Exception as e:
+                time.sleep(2)
+
+        # 2번 다 실패한 경우
+        if not success:
+            addr_str = build_full_address(addr)
+
+            failures.append({
+                "idx": idx,
+                "법정동명": addr["base"],
+                "본번": addr["main"],
+                "부번_리스트": addr["sub"],
+                "소유권변동일자": addr["changed_date"]
+            })
+
+            logging.error(f"❌ 실패 idx:{idx} → {addr_str}")
+
     driver.quit()
+
+    logging.info("=================================")
+    logging.info("작업 종료")
+    logging.info(f"총 실패 개수: {len(failures)}")
+
+    if failures:
+        df_fail = pd.DataFrame(failures)
+
+        fail_parquet_path = os.path.join(
+            os.path.join(OUTPUT_DIR, "logs"),
+            "failures.parquet"
+        )
+
+        fail_csv_path = os.path.join(
+            os.path.join(OUTPUT_DIR, "logs"),
+            "failures.csv"
+        )
+
+        df_fail.to_parquet(fail_parquet_path, index=False)
+
+        df_fail.to_csv(fail_csv_path, index=False, encoding="utf-8-sig")
+
+        logging.info(f"❌ 실패 목록 저장: {fail_parquet_path}")
+
+    else:
+        logging.info("모든 작업 성공 🎉")
+
+

@@ -13,6 +13,13 @@ $ brew install tesseract tesseract-lang poppler
 $ python3 data_pipeline/extract/extract_gov24_land.py ./data/output/silver_stage_1/byproduct/region=경기/sigungu=41461/year=2025 --start 10 --end 20
 ```
 
+* 실패한 인덱스는 프로그램 종료 후 <pdf 저장 경로>/logs/failures.csv로 저장됨
+* 실패한 인덱스만 모은 parquet 파일도 생성되니 이후 아래 명령어로 실패한 인덱스만 크롤링 가능
+
+```bash
+$ python3 data_pipeline/extract/extract_gov24_land.py ./data/tojidaejang/_work/output/logs
+```
+
 
 ### 토지대장 pdf 파싱 -> CSV 파일 변환 (주소, 지번, 지주)
 ```bash
