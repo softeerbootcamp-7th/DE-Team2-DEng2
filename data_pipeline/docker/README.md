@@ -7,7 +7,12 @@ mkdir -p data logs spark-events notebooks
 
 ### Build docker image
 ```bash
-docker-compose up -d
+docker compose --env-file ../../.env up -d
+```
+
+### Rebuild after Dockerfile / compose changes
+```bash
+docker compose --env-file ../../.env up -d --build
 ```
 
 ### Structure

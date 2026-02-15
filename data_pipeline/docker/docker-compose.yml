@@ -4,15 +4,31 @@ services:
     container_name: spark-master
     hostname: spark-master
     ports:
-      - "8080:8080" 
+      - "8080:8080"
       - "7077:7077"
     environment:
       - SPARK_MODE=master
       - LANG=C.UTF-8
       - LC_ALL=C.UTF-8
       - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-}
+      - LOCAL_PG_HOST=${LOCAL_PG_HOST:-postgres-local}
+      - LOCAL_PG_PORT=${LOCAL_PG_PORT:-5432}
+      - LOCAL_PG_DB=${LOCAL_PG_DB:-deng2}
+      - LOCAL_PG_USER=${LOCAL_PG_USER:-deng2}
+      - LOCAL_PG_PASSWORD=${LOCAL_PG_PASSWORD:-deng2}
+      - RDS_HOST=${RDS_HOST:-}
+      - RDS_PORT=${RDS_PORT:-5432}
+      - RDS_DB=${RDS_DB:-}
+      - RDS_USER=${RDS_USER:-}
+      - RDS_PASSWORD=${RDS_PASSWORD:-}
     volumes:
       - ./jobs:/opt/spark/jobs
+      - ../common:/opt/spark/common
       - ../../data:/opt/spark/data
       - ./spark-events:/opt/spark/spark-events
       - ./logs:/opt/spark/logs
@@ -31,8 +47,24 @@ services:
       - LANG=C.UTF-8
       - LC_ALL=C.UTF-8
       - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-}
+      - LOCAL_PG_HOST=${LOCAL_PG_HOST:-postgres-local}
+      - LOCAL_PG_PORT=${LOCAL_PG_PORT:-5432}
+      - LOCAL_PG_DB=${LOCAL_PG_DB:-deng2}
+      - LOCAL_PG_USER=${LOCAL_PG_USER:-deng2}
+      - LOCAL_PG_PASSWORD=${LOCAL_PG_PASSWORD:-deng2}
+      - RDS_HOST=${RDS_HOST:-}
+      - RDS_PORT=${RDS_PORT:-5432}
+      - RDS_DB=${RDS_DB:-}
+      - RDS_USER=${RDS_USER:-}
+      - RDS_PASSWORD=${RDS_PASSWORD:-}
     volumes:
       - ./jobs:/opt/spark/jobs
+      - ../common:/opt/spark/common
       - ../../data:/opt/spark/data
       - ./spark-events:/opt/spark/spark-events
       - ./logs:/opt/spark/logs
@@ -51,8 +83,24 @@ services:
       - LANG=C.UTF-8
       - LC_ALL=C.UTF-8
       - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-}
+      - LOCAL_PG_HOST=${LOCAL_PG_HOST:-postgres-local}
+      - LOCAL_PG_PORT=${LOCAL_PG_PORT:-5432}
+      - LOCAL_PG_DB=${LOCAL_PG_DB:-deng2}
+      - LOCAL_PG_USER=${LOCAL_PG_USER:-deng2}
+      - LOCAL_PG_PASSWORD=${LOCAL_PG_PASSWORD:-deng2}
+      - RDS_HOST=${RDS_HOST:-}
+      - RDS_PORT=${RDS_PORT:-5432}
+      - RDS_DB=${RDS_DB:-}
+      - RDS_USER=${RDS_USER:-}
+      - RDS_PASSWORD=${RDS_PASSWORD:-}
     volumes:
       - ./jobs:/opt/spark/jobs
+      - ../common:/opt/spark/common
       - ../../data:/opt/spark/data
       - ./spark-events:/opt/spark/spark-events
       - ./logs:/opt/spark/logs
@@ -70,7 +118,13 @@ services:
       - LANG=C.UTF-8
       - LC_ALL=C.UTF-8
       - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-}
     volumes:
+      - ../common:/opt/spark/common
       - ./spark-events:/opt/spark/spark-events
     networks:
       - spark-network
@@ -87,8 +141,24 @@ services:
       - LANG=C.UTF-8
       - LC_ALL=C.UTF-8
       - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-}
+      - LOCAL_PG_HOST=${LOCAL_PG_HOST:-postgres-local}
+      - LOCAL_PG_PORT=${LOCAL_PG_PORT:-5432}
+      - LOCAL_PG_DB=${LOCAL_PG_DB:-deng2}
+      - LOCAL_PG_USER=${LOCAL_PG_USER:-deng2}
+      - LOCAL_PG_PASSWORD=${LOCAL_PG_PASSWORD:-deng2}
+      - RDS_HOST=${RDS_HOST:-}
+      - RDS_PORT=${RDS_PORT:-5432}
+      - RDS_DB=${RDS_DB:-}
+      - RDS_USER=${RDS_USER:-}
+      - RDS_PASSWORD=${RDS_PASSWORD:-}
     volumes:
       - ./notebooks:/opt/spark/notebooks
+      - ../common:/opt/spark/common
       - ../../data:/opt/spark/data
       - ./spark-events:/opt/spark/spark-events
     networks:
@@ -96,4 +166,5 @@ services:
 
 networks:
   spark-network:
+    name: deng2-shared-network
     driver: bridge

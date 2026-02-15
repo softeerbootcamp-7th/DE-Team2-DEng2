@@ -1,8 +1,23 @@
 import datetime as dt
 import argparse
+import os
+import sys
+from pathlib import Path
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
 from pyspark.sql import Window
+
+# common 폴더 내 파일들 사용을 위한 path 설정
+COMMON_DIR_CANDIDATES = [
+    Path("/opt/spark/common"),
+]
+for common_dir in COMMON_DIR_CANDIDATES:
+    if common_dir.exists() and str(common_dir) not in sys.path:
+        sys.path.insert(0, str(common_dir))
+
+from s3_common import build_data_root, configure_s3a_for_spark
+from postgres_orm import store_silver_stage_1
+
 
 def main():
     # 1. Command Line Arguments 설정
@@ -10,15 +25,28 @@ def main():
     parser.add_argument("--region", type=str, default="경기", help="지역명 (기본값: 경기)")
     # default를 None으로 설정하여 입력이 없을 경우를 대비합니다.
     parser.add_argument("--sigungu_code", type=str, default=None, help="시군구코드 5자리 (입력 안 할 시 지역 전체)")
+    parser.add_argument("--input_mode", choices=["local", "s3"], default="local", help="입력 데이터 저장소")
+    parser.add_argument(
+        "--output_mode",
+        choices=["local", "s3", "local_db", "rds"],
+        default="local",
+        help="최종 결과 저장소",
+    )
+    parser.add_argument("--local_data_root", type=str, default="/opt/spark/data", help="로컬 데이터 루트 경로")
+    parser.add_argument("--s3_bucket", type=str, default=None, help="입력 S3 bucket 이름 (input_mode=s3 일 때 필수)")
+    parser.add_argument("--s3_prefix", type=str, default="data", help="입력 S3 prefix (예: data)")
+    parser.add_argument("--output_s3_prefix", type=str, default="data", help="output_mode=s3 일 때 출력 S3 prefix")
+
     args = parser.parse_args()
 
     region = args.region
     sigungu_code = args.sigungu_code
+    need_s3_support = (args.input_mode == "s3") or (args.output_mode == "s3")
 
     # 2. Spark Session 설정
     # 앱 이름에 sigungu_code가 없을 경우 'all'로 표시
     app_sigungu = sigungu_code if sigungu_code else "all"
-    spark = SparkSession.builder \
+    spark_builder = SparkSession.builder \
         .appName(f'silver_stage_1_{region}_{app_sigungu}') \
         .master("spark://spark-master:7077") \
         .config("spark.sql.adaptive.enabled", "true") \
@@ -26,8 +54,17 @@ def main():
         .config("spark.memory.fraction", "0.8") \
         .config("spark.executor.memory", "4g") \
         .config("spark.driver.memory", "4g") \
-        .config("spark.sql.shuffle.partitions", "400") \
-        .getOrCreate()
+        .config("spark.sql.shuffle.partitions", "400")
+
+    if need_s3_support:
+        spark_builder = configure_s3a_for_spark(
+            spark_builder,
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            aws_session_token=os.getenv("AWS_SESSION_TOKEN"),
+        )
+
+    spark = spark_builder.getOrCreate()
 
     # 3. 날짜 및 경로 계산
     today = dt.date.today()
@@ -41,10 +78,17 @@ def main():
 
     prev_q_last_month = prev_q * 3
 
-    BUILDING_BASE = "/opt/spark/data/buildingLeader/parquet"
-    TOJI_BASE     = "/opt/spark/data/tojiSoyuJeongbo/parquet"
-    REST_BASE     = "/opt/spark/data/restaurant/parquet"
-    REST_OWNER_BASE = "/opt/spark/data/restaurant_owner/parquet"
+    input_data_root = build_data_root(
+        storage=args.input_mode,
+        local_data_root=args.local_data_root,
+        s3_bucket=args.s3_bucket,
+        s3_prefix=args.s3_prefix,
+    )
+
+    BUILDING_BASE = f"{input_data_root}/buildingLeader/parquet"
+    TOJI_BASE = f"{input_data_root}/tojiSoyuJeongbo/parquet"
+    REST_BASE = f"{input_data_root}/restaurant/parquet"
+    REST_OWNER_BASE = f"{input_data_root}/restaurant_owner/parquet"
 
     building_path = f"{BUILDING_BASE}/year={prev_q_year}/month={prev_q_last_month:02d}"
     toji_path     = f"{TOJI_BASE}/year={prev_q_year}/month={prev_q_last_month:02d}"
@@ -191,18 +235,9 @@ def main():
         how="left_anti"
     )
 
-    # 11. 메인 결과 저장 경로 설정
-    # sigungu_code가 없으면 경로명을 'all'로 지정하여 덮어쓰기 방지 및 명확성 확보
+    # 11. 결과 공통 메타
+    # sigungu_code가 없으면 경로명을 'all'로 지정하여 명확성 확보
     sigungu_dir = sigungu_code if sigungu_code else "all"
-    out_base = "/opt/spark/data/output/silver_stage_1"
-
-    main_out_path = f"{out_base}/main/year={prev_q_year}/month={prev_q_last_month:02d}/region={region}/sigungu={sigungu_dir}"
-
-    clean_final_toji_df.write.mode("overwrite").parquet(main_out_path)
-    print(f"[SUCCESS] Main data saved to: {main_out_path}")
-
-    # 12. 부산물 저장
-    byproduct_out_path = f"{out_base}/byproduct/year={prev_q_year}/month={prev_q_last_month:02d}/region={region}/sigungu={sigungu_dir}"
 
     byproduct_df = (
         clean_final_toji_df
@@ -210,8 +245,51 @@ def main():
         .agg(F.collect_list("부번").alias("부번_리스트"))
     )
 
-    byproduct_df.write.mode("overwrite").parquet(byproduct_out_path)
-    print(f"[SUCCESS] Byproduct saved to: {byproduct_out_path}")
+    if args.output_mode in ("local", "s3"):
+        if args.output_mode == "local":
+            output_data_root = build_data_root(storage="local", local_data_root=args.local_data_root)
+        else:
+            output_s3_bucket = args.s3_bucket
+            if not output_s3_bucket:
+                raise ValueError(
+                    "--output_mode s3 인 경우 --s3_bucket 값을 지정해야 합니다."
+                )
+            output_data_root = build_data_root(
+                storage="s3",
+                s3_bucket=output_s3_bucket,
+                s3_prefix=args.output_s3_prefix,
+            )
+
+        out_base = f"{output_data_root}/output/silver_stage_1"
+        main_out_path = (
+            f"{out_base}/main/year={prev_q_year}/month={prev_q_last_month:02d}"
+            f"/region={region}/sigungu={sigungu_dir}"
+        )
+        byproduct_out_path = (
+            f"{out_base}/byproduct/year={prev_q_year}/month={prev_q_last_month:02d}"
+            f"/region={region}/sigungu={sigungu_dir}"
+        )
+
+        clean_final_toji_df.write.mode("overwrite").parquet(main_out_path)
+        byproduct_df.write.mode("overwrite").parquet(byproduct_out_path)
+        print(f"[SUCCESS] Main data saved to: {main_out_path}")
+        print(f"[SUCCESS] Byproduct saved to: {byproduct_out_path}")
+    elif args.output_mode in ("local_db", "rds"):
+        db_mode = "local" if args.output_mode == "local_db" else "aws"
+        row_count = store_silver_stage_1(
+            main_df=clean_final_toji_df,
+            mode=db_mode,
+            source_year=prev_q_year,
+            source_month=prev_q_last_month,
+            region=region,
+            sigungu=sigungu_dir,
+        )
+        print(
+            f"[SUCCESS] Postgres load completed: "
+            f"inserted_rows={row_count}, output_mode={args.output_mode}"
+        )
+    else:
+        raise ValueError(f"Unsupported output_mode: {args.output_mode}")
 
     spark.stop()
 

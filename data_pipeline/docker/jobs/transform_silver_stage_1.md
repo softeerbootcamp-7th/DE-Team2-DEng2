@@ -44,3 +44,58 @@
 docker exec -it spark-master spark-submit \
     /opt/spark/jobs/transform_silver_stage_1.py \
     --region "경기"
+```
+
+## 5. 저장 모드 및 DB 적재
+
+
+### 5.1 입력/출력 모드
+- 입력: `--input_mode local|s3`
+- 출력: `--output_mode local|s3|local_db|rds`
+
+
+### 1) input: local files, output: local files
+```bash
+docker exec -it spark-master spark-submit \
+  /opt/spark/jobs/transform_silver_stage_1.py \
+  --input_mode local \
+  --output_mode local \
+  --region 경기
+```
+
+
+### 2) input: local files, output: local DB
+```bash
+docker exec -it spark-master spark-submit \
+  /opt/spark/jobs/transform_silver_stage_1.py \
+  --input_mode local \
+  --output_mode local_db \
+  --region 경기
+```
+
+### 3) input: S3, output: RDS
+Set env vars in Spark container environment:
+- `RDS_HOST`, `RDS_PORT`, `RDS_DB`, `RDS_USER`, `RDS_PASSWORD`
+
+Then run:
+```bash
+docker exec -it spark-master spark-submit \
+  /opt/spark/jobs/transform_silver_stage_1.py \
+  --input_mode s3 \
+  --output_mode rds \
+  --s3_bucket <your-bucket> \
+  --s3_prefix <your-s3-dir> \
+  --region 경기
+```
+
+### 4) input: s3, output: s3
+```bash
+docker exec -it spark-master spark-submit \
+  /opt/spark/jobs/transform_silver_stage_1.py \
+  --input_mode s3 \
+  --output_mode s3 \
+  --s3_bucket <your-bucket> \
+  --s3_prefix <your-s3-dir> \
+  --output_s3_prefix <your-s3-output-dir> \
+  --region 경기
+```
