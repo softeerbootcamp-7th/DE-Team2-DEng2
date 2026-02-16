@@ -19,7 +19,7 @@ def build_postgres_url(
         return db_url
 
     if mode == "local":
-        host = os.getenv("LOCAL_PG_HOST", "postgres-local")
+        host = os.getenv("LOCAL_PG_HOST", "localhost")
         port = os.getenv("LOCAL_PG_PORT", "5432")
         database = os.getenv("LOCAL_PG_DB", "deng2")
         user = os.getenv("LOCAL_PG_USER", "deng2")
