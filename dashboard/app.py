@@ -165,8 +165,7 @@ with st.form("batch_update_form"):
                         )
                 
                 st.success(f"✅ 총 {len(edited_rows)}건의 변경사항이 DB에 반영되었습니다!")
-                # 반영 후 최신 데이터를 불러오기 위해 리런
-                st.rerun()
+
     else:
         st.write("표시할 데이터가 없습니다.")
         # 폼을 닫기 위한 더미 버튼 (st.form 사용 시 버튼이 반드시 하나 이상 필요)
