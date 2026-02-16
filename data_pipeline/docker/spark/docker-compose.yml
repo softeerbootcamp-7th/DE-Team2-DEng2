@@ -88,7 +88,7 @@ services:
       - LC_ALL=C.UTF-8
       - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
     volumes:
-      - ../../notebooks:/opt/spark/notebooks
+      - ../../transform/notebooks:/opt/spark/notebooks
       - ../../../data:/opt/spark/data
       - ./spark-events:/opt/spark/spark-events
     networks:
