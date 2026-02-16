@@ -6,56 +6,10 @@ from typing import Any, Dict, Iterable, Optional
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-
-# Spark container에서 /opt/spark/api 패키지를 import할 수 있도록 경로 보정
-PROJECT_ROOT_CANDIDATES = [
-    Path("/opt/spark"),
-    Path(__file__).resolve().parents[2],
-]
-for root in PROJECT_ROOT_CANDIDATES:
-    if root.exists() and str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from api.db.init_db import init_db
 from api.db.session import create_engine_for_mode
 from api.models.silver_stage_1 import SilverStage1Main
-
-
-def _to_float(value) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        parsed = float(value)
-        if math.isnan(parsed):
-            return None
-        return parsed
-    except (TypeError, ValueError):
-        return None
-
-
-def _flush_batches(
-    session: Session,
-    model: Any,
-    mappings: Iterable[Dict[str, Any]],
-    batch_size: int,
-) -> int:
-    batch: list[Dict[str, Any]] = []
-    inserted = 0
-
-    for mapping in mappings:
-        batch.append(mapping)
-        if len(batch) >= batch_size:
-            session.bulk_insert_mappings(model, batch)
-            session.commit()
-            inserted += len(batch)
-            batch.clear()
-
-    if batch:
-        session.bulk_insert_mappings(model, batch)
-        session.commit()
-        inserted += len(batch)
-
-    return inserted
 
 
 def store_silver_stage_1(
@@ -166,3 +120,41 @@ def store_silver_stage_1(
 
     engine.dispose()
     return inserted_count
+
+
+def _to_float(value) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+        if math.isnan(parsed):
+            return None
+        return parsed
+    except (TypeError, ValueError):
+        return None
+
+
+def _flush_batches(
+    session: Session,
+    model: Any,
+    mappings: Iterable[Dict[str, Any]],
+    batch_size: int,
+) -> int:
+    batch: list[Dict[str, Any]] = []
+    inserted = 0
+
+    for mapping in mappings:
+        batch.append(mapping)
+        if len(batch) >= batch_size:
+            session.bulk_insert_mappings(model, batch)
+            session.commit()
+            inserted += len(batch)
+            batch.clear()
+
+    if batch:
+        session.bulk_insert_mappings(model, batch)
+        session.commit()
+        inserted += len(batch)
+
+    return inserted
+

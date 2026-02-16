@@ -24,30 +24,14 @@ RUN MIRROR_URL="https://mirror.kakao.com/apache/spark/spark-$SPARK_VERSION/spark
     (curl -fL "https://archive.apache.org/dist/spark/spark-$SPARK_VERSION/spark-$SPARK_VERSION-bin-hadoop$HADOOP_VERSION.tgz" | tar xz -C /opt) && \
     mv /opt/spark-$SPARK_VERSION-bin-hadoop$HADOOP_VERSION $SPARK_HOME
 
-ARG HADOOP_AWS_VERSION=3.4.1
-ARG AWS_SDK_V2_BUNDLE_VERSION=2.24.6
-ARG POSTGRES_JDBC_VERSION=42.7.4
-
-RUN set -eux; \
-    curl -fL -o /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar \
-      https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VERSION}/hadoop-aws-${HADOOP_AWS_VERSION}.jar; \
-    curl -fL -o /opt/spark/jars/bundle-${AWS_SDK_V2_BUNDLE_VERSION}.jar \
-      https://repo1.maven.org/maven2/software/amazon/awssdk/bundle/${AWS_SDK_V2_BUNDLE_VERSION}/bundle-${AWS_SDK_V2_BUNDLE_VERSION}.jar; \
-    curl -fL -o /opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar \
-      https://repo1.maven.org/maven2/org/postgresql/postgresql/${POSTGRES_JDBC_VERSION}/postgresql-${POSTGRES_JDBC_VERSION}.jar
-
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 RUN uv pip install --system --no-cache-dir \
     pyspark==$SPARK_VERSION \
     pandas \
     pyarrow \
-    boto3 \
-    SQLAlchemy \
-    psycopg2-binary \
     jupyterlab \
     matplotlib \
-    seaborn \
-    python-dotenv
+    seaborn 
 
 ENV PYSPARK_PYTHON=python3
 ENV PYSPARK_DRIVER_PYTHON=python3

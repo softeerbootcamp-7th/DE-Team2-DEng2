@@ -18,12 +18,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - spark-network
+      - db-network
 
 volumes:
   postgres-local-data:
 
 networks:
-  spark-network:
-    name: deng2-shared-network
-    external: true
+  db-network:
+    name: deng2-postgres-network
+    driver: bridge

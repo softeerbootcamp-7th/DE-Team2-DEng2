@@ -1,0 +1,100 @@
+services:
+  spark-master:
+    build: .
+    container_name: spark-master
+    hostname: spark-master
+    ports:
+      - "8080:8080" 
+      - "7077:7077"
+    environment:
+      - SPARK_MODE=master
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+    volumes:
+      - ../../transform:/opt/spark/jobs
+      - ../../../data:/opt/spark/data
+      - ./spark-events:/opt/spark/spark-events
+      - ./logs:/opt/spark/logs
+    networks:
+      - spark-network
+
+  spark-worker-1:
+    build: .
+    container_name: spark-worker-1
+    hostname: spark-worker-1
+    ports:
+      - 8081:8081
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_WORKER_WEBUI_PORT=8081
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+    volumes:
+      - ../../transform:/opt/spark/jobs
+      - ../../../data:/opt/spark/data
+      - ./spark-events:/opt/spark/spark-events
+      - ./logs:/opt/spark/logs
+    networks:
+      - spark-network
+
+  spark-worker-2:
+    build: .
+    container_name: spark-worker-2
+    hostname: spark-worker-2
+    ports:
+      - 8082:8082
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_WORKER_WEBUI_PORT=8082
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+    volumes:
+      - ../../transform:/opt/spark/jobs
+      - ../../../data:/opt/spark/data
+      - ./spark-events:/opt/spark/spark-events
+      - ./logs:/opt/spark/logs
+    networks:
+      - spark-network
+
+  spark-history-server:
+    build: .
+    container_name: spark-history-server
+    hostname: spark-history-server
+    ports:
+      - "18080:18080"
+    environment:
+      - SPARK_MODE=history
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+    volumes:
+      - ./spark-events:/opt/spark/spark-events
+    networks:
+      - spark-network
+
+  spark-jupyter:
+    build: .
+    container_name: spark-jupyter
+    hostname: spark-jupyter
+    ports:
+      - "8888:8888"
+      - "4040:4040"
+    environment:
+      - SPARK_MODE=jupyter
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+    volumes:
+      - ../../notebooks:/opt/spark/notebooks
+      - ../../../data:/opt/spark/data
+      - ./spark-events:/opt/spark/spark-events
+    networks:
+      - spark-network
+
+networks:
+  spark-network:
+    name: deng2-spark-network
+    driver: bridge
