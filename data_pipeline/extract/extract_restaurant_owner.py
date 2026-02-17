@@ -287,14 +287,14 @@ def search_and_save_all_pages(
                 logger.warning(f"검색 결과 없음: {address}")
                 notifier.info("검색 결과 없음", f"{sido_name} {address} 에 해당하는 데이터가 없습니다.")
                 browser.close()
-                return
-
+                return False
+            
             # end_page 결정
             actual_end = min(end_page, total_pages) if end_page else total_pages
             if start_page > actual_end:
                 logger.info(f"✅ 이미 모든 페이지 완료 (시작={start_page}, 끝={actual_end})")
                 browser.close()
-                return
+                return True
 
             logger.info(f"총 {total_pages} 페이지 중 {start_page}~{actual_end} 페이지 크롤링 시작")
 
@@ -492,9 +492,10 @@ def main():
     if start_page == 1 and csv_file.exists() and not args.auto_resume:
         logger.info(f"⏭️  이미 CSV 파일이 존재합니다. 크롤링을 건너뜁니다: {csv_file.name}")
         logger.info(f"   (재개하려면 --auto-resume 또는 --start-page N 옵션을 사용하세요)")
+        crawl_complete = True
     else:
         logger.info(f"🚀 크롤링 시작: {args.sido} {args.addr} (페이지 {start_page}~{end_page or '끝'})")
-        search_and_save_all_pages(
+        crawl_complete = search_and_save_all_pages(
             sido_name=args.sido,
             address=args.addr,
             cfg=Config(),
