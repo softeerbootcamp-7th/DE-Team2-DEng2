@@ -18,3 +18,6 @@ __pycache__/
 # 5. Data
 *.pdf
 *.csv
+
+## 6. 기타
+.ruff_cache
