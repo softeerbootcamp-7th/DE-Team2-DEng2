@@ -35,7 +35,7 @@ def render_chajoo_map(gdf, mapbox_api_key=None):
     # CRS 및 기하학 단순화 (성능 최적화)
     if merged.crs is None or merged.crs.to_epsg() != 4326:
         merged = merged.to_crs(epsg=4326)
-    merged["geometry"] = merged["geometry"].simplify(tolerance=0.01, preserve_topology=True)
+    merged["geometry"] = merged["geometry"]
 
     # 색상 적용
     max_val = merged["value"].max()
@@ -116,4 +116,39 @@ def render_chajoo_map(gdf, mapbox_api_key=None):
                 "borderRadius": "8px",
             },
         }
-    ), use_container_width=True)
+    ), width='stretch')
+
+    with st.expander("🗺️ 전국 수요 및 인프라 분석 가이드", expanded=True):
+        legend_infrastructure = """
+        <div style="background-color: #1e1e1e; padding: 20px 20px 48px 20px;; border-radius: 10px; border: 1px solid #444; color: white; font-family: sans-serif;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="vertical-align: top; width: 50%; padding-right: 15px;">
+                        <h5 margin: 0 0 10px 0;">📈 수요: 차주 밀집도</h5>
+                        <div style="margin-bottom: 6px; font-size: 14px; display: flex; align-items: center;">
+                            <span style="display:inline-block; width:12px; height:12px; background:#ff3c00; border-radius:2px; margin-right:8px;"></span>매우 높음
+                        </div>
+                        <div style="margin-bottom: 6px; font-size: 14px; display: flex; align-items: center;">
+                            <span style="display:inline-block; width:12px; height:12px; background:#b43cff; border-radius:2px; margin-right:8px;"></span>중간 분포
+                        </div>
+                        <div style="margin-bottom: 6px; font-size: 14px; display: flex; align-items: center;">
+                            <span style="display:inline-block; width:12px; height:12px; background:#b4b4b4; border-radius:2px; margin-right:8px;"></span>거주자 적음
+                        </div>
+                    </td>
+                    <td style="vertical-align: top; width: 50%; border-left: 1px solid #333; padding-left: 20px;">
+                        <h5 margin: 0 0 10px 0;">🅿️ 공급: 기존 인프라</h5>
+                        <div style="margin-bottom: 12px; display: flex; align-items: center;">
+                            <span style="display:inline-block; width:12px; height:12px; background:rgb(204, 255, 0); border-radius:50%; margin-right:10px;"></span>
+                            <b font-size: 14px;">트럭헬퍼 주차장</b>
+                        </div>
+                        <div style="font-size: 12px; color: #ccc; line-height: 1.5;">
+                            붉은 수요 구역에 연두색 점이 없는 곳이<br>
+                            <span style="color:#ff6666;"><b>서비스 확장 우선순위</b></span> 지역입니다.
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        """
+        st.markdown(legend_infrastructure, unsafe_allow_html=True)
+        st.write("")

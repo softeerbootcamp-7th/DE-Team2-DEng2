@@ -191,6 +191,19 @@ streamlit run dashboard/app.py
 
 ---
 
+### 5. `public.cargo_zscore_hotspots`
+화물차주 분포의 통계적 유의성을 분석한 **Z-Score 핫스팟** 테이블입니다.  
+단순 수치를 넘어 밀집 지역의 통계적 특성을 시각화하는 데 사용됩니다.
+
+| 컬럼명 | 타입 | 설명 |
+|:---:|:---:|---|
+| **sigungu_cd** | bigint | 시군구 코드 |
+| **oa_code** | bigint | 집계구 코드 (Output Area) |
+| **value** | double precision | 해당 구역의 화물차주 수 또는 밀도 |
+| **z_score** | double precision | 통계적 유의성을 나타내는 Z-점수 |
+| **lat** | double precision | 해당 구역 중심점 위도 |
+| **lon** | double precision | 해당 구역 중심점 경도 |
+
 ## ⚠️ 주의사항
 
 - 모든 테이블은 **동일한 데이터베이스 스키마 (`public`)**에 존재해야 합니다.

@@ -76,3 +76,15 @@ def update_restaurant_status(name, address, access, status, remarks):
         """)
         conn.execute(query, {"name": name, "address": address, "access": access, "status": status, "remarks": remarks})
     st.cache_data.clear()
+
+def load_zscore_hotspots(selected_shp_cd):
+    engine = get_engine()
+
+    # 앞 5자리 시군구 코드를 비교하여 필터링 (sigungu_cd 컬럼 활용)
+    # 만약 DB 적재 시 앞 5자리를 sigungu_cd로 저장했다면 아래 쿼리가 동작합니다.
+    query = f"""
+        SELECT lat, lon, value, z_score 
+        FROM cargo_zscore_hotspots 
+        WHERE sigungu_cd = '{selected_shp_cd}'
+    """
+    return pd.read_sql(query, engine)

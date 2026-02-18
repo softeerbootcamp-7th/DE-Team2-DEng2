@@ -136,7 +136,6 @@ col1, col2 = st.columns([6, 4])
 # --- 왼쪽 컬럼: 식당 분포 지도 ---
 with col1:
     st.subheader("🍳 식당 분포 지도")
-    
     # 상단 뱃지 및 컨트롤러
     c1, c2 = st.columns([7, 3])
     with c1:
@@ -162,6 +161,6 @@ with col2:
     st.info(f"전국 등록 화물차 통계 ({latest_year}년 {latest_month}월)")
     render_chajoo_map(gdf_shp, mapbox_api_key=MAPBOX_API_KEY)
 
-# --- 하단 섹션: 데이터 에디터 ---
-st.markdown("---")
+# --- 하단 섹션: 데이터 에디터 -
+st.subheader("📝 식당 정보 수정")
 render_restaurant_editor(filtered_df)
