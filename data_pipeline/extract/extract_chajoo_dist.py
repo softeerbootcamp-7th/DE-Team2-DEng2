@@ -1,17 +1,18 @@
 import os
 import sys
 import time
+import re
 import logging
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List, Iterable
-
+from datetime import date
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from dotenv import load_dotenv
 
@@ -36,7 +37,7 @@ class Config:
     slack_webhook_url: Optional[str] = os.getenv("SLACK_WEBHOOK_URL")
     parquet_overwrite: bool = False
     force_run: bool = False
-    sigungu_mapping_csv: str = "data/chajoo_dist/_work/csv/국토교통부_법정동코드_20250805.csv"
+    sigungu_mapping_csv: str = "data/chajoo_dist/_work/csv/SHP_CD_mapping.csv"
 
 # =========================
 # Logger & Helpers
@@ -58,12 +59,14 @@ def build_logger(log_file: Path) -> logging.Logger:
 
 def init_run_dirs(cfg: Config) -> dict:
     base = Path(cfg.project_root)
+
     paths = {
         "base": base,
         "work": base / "_work",
         "xlsx": base / "_work" / "xlsx",
         "parquet": base / "parquet",
         "log_file": base / "_work" / "run.log",
+        "gold": Path("data/output/gold/chajoo_dist"),
     }
     paths["xlsx"].mkdir(parents=True, exist_ok=True)
     paths["parquet"].mkdir(parents=True, exist_ok=True)
@@ -127,13 +130,85 @@ def is_xlsx_zip(path: Path) -> bool:
     except Exception:
         return False
 
+def set_month_and_query(
+    driver,
+    logger,
+    yyyymm: str | None = None,
+    wait_timeout: int = 30,
+):
+
+
+    wait = WebDriverWait(driver, wait_timeout)
+
+    # 기존 테이블 잡아두기 (조회 후 stale 체크용)
+    old_table = None
+    try:
+        old_table = driver.find_element(By.XPATH, "//table")
+    except Exception:
+        pass
+
+    # ✅ "기간선택" 시작/끝 월 select 2개 찾기 (양식/차트 select 같은 건 제외)
+    month_re = re.compile(r"^\d{6}$")
+
+    selects = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//select")))
+    month_selects = []
+    for s in selects:
+        try:
+            sel = Select(s)
+            values = [o.get_attribute("value") for o in sel.options if o.get_attribute("value")]
+            month_vals = [v for v in values if month_re.match(v)]
+            # 월 옵션이 충분히 많은 select만 채택
+            if len(month_vals) >= 12:
+                month_selects.append((s, month_vals))
+        except Exception:
+            continue
+
+    if len(month_selects) < 2:
+        raise RuntimeError("기간선택(시작/끝) 월 select 2개를 찾지 못했습니다. XPath/페이지 구조 확인 필요.")
+
+    # 보통 DOM 상 앞이 시작, 뒤가 끝
+    start_el, start_vals = month_selects[0]
+    end_el, end_vals = month_selects[1]
+    start_sel = Select(start_el)
+    end_sel = Select(end_el)
+
+    # ✅ yyyymm 없으면 최신 월(첫 옵션) 자동
+    if not yyyymm:
+        yyyymm = start_vals[0]
+        logger.info(f"월 미지정 → 최신 월 자동 선택: {yyyymm}")
+    else:
+        logger.info(f"월 설정(시작/끝 동일): {yyyymm}")
+
+    # 시작/끝 모두 같은 월로 세팅
+    start_sel.select_by_value(yyyymm)
+    end_sel.select_by_value(yyyymm)
+
+    # 조회 버튼 클릭
+    query_btn = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='조회']"))
+    )
+    query_btn.click()
+
+    # 테이블 갱신 대기
+    if old_table is not None:
+        try:
+            wait.until(EC.staleness_of(old_table))
+        except Exception:
+            pass
+
+    wait.until(EC.presence_of_element_located((By.XPATH, "//table")))
+    time.sleep(1.0)  # 렌더링 여유
+
+    return yyyymm
+
+
 def wait_for_download(download_dir: Path, timeout: int) -> Path:
     end = time.time() + timeout
     while time.time() < end:
         # .xlsx 파일만 필터링 (임시 파일 .crdownload 제외)
         files = list(download_dir.glob("*.xlsx"))
         files = [f for f in files if not f.name.endswith(".crdownload")]
-        
+
         if files:
             latest = max(files, key=lambda p: p.stat().st_mtime)
             # [중요] 파일 쓰기가 완료되었는지 체크 (크기 변화 관찰)
@@ -146,45 +221,43 @@ def wait_for_download(download_dir: Path, timeout: int) -> Path:
                 time.sleep(0.5)
         time.sleep(1.0)
 
-def perform_download(driver: webdriver.Chrome, logger: logging.Logger, cfg: Config, download_dir: Path) -> Path:
+def perform_download(
+    driver,
+    logger,
+    cfg,
+    download_dir: Path,
+    yyyymm: str | None = None,
+) -> Path:
     wait = WebDriverWait(driver, 30)
-    
+
     for attempt in range(1, cfg.retries + 1):
         try:
             logger.info(f"다운로드 시도 ({attempt}/{cfg.retries})")
+
+            if yyyymm:
+                used_yyyymm = set_month_and_query(driver, logger, yyyymm)
+
             start_ts = time.time()
             main_handle = driver.current_window_handle
 
-            # 1. 메인 버튼 클릭
-            btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@title='파일 다운로드' or normalize-space()='파일 다운로드']")))
-            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
-            time.sleep(0.5)
+            btn = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "//button[@title='파일 다운로드' or normalize-space()='파일 다운로드']")
+            ))
             btn.click()
 
-            # 2. 새 창(팝업) 확인
-            time.sleep(2)
-            handles = driver.window_handles
-            if len(handles) > 1:
-                popup_handle = [h for h in handles if h != main_handle][0]
-                driver.switch_to.window(popup_handle)
-                
-                # 팝업 내 다운로드 버튼 클릭
-                dl_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'다운로드')] | //a[contains(.,'다운로드')]")))
-                dl_btn.click()
-                time.sleep(1)
-                driver.close()
-                driver.switch_to.window(main_handle)
-            else:
-                # 모달 형태일 경우
-                modal_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@class,'modal')]//button[contains(.,'다운로드')]")))
-                modal_btn.click()
+            # 모달 표시 대기
+            wait.until(EC.visibility_of_element_located(
+                (By.ID, "file-download-modal")
+            ))
 
-            # 3. 파일 대기
+            # 🔥 다운로드 함수 직접 실행 (가장 안정적)
+            driver.execute_script("download();")
+
             path = wait_for_download(download_dir, cfg.timeout_sec)
             if path.stat().st_mtime >= start_ts:
                 logger.info(f"다운로드 성공: {path.name}")
-                return path
-            
+                return path, used_yyyymm
+
         except Exception as e:
             logger.warning(f"시도 {attempt} 실패: {e}")
             if attempt < cfg.retries:
@@ -192,6 +265,8 @@ def perform_download(driver: webdriver.Chrome, logger: logging.Logger, cfg: Conf
                 time.sleep(3)
             else:
                 raise
+
+
 
 # =========================
 # Parquet Conversion
@@ -219,11 +294,41 @@ SIDO_CODE_MAP = {
 def convert_xlsx_to_parquet(
     xlsx_path: Path,
     out_dir_root: Path,
-    cfg: Config,
-    logger: logging.Logger
+    gold_dir_root: Path,
+    cfg: "Config",
+    logger: logging.Logger,
+    yyyymm: str,   # "YYYYMM"
 ) -> str:
+    """
+    엑셀 -> 전처리 -> (year=YYYY/month=MM)/part.parquet 저장
+    - yyyymm으로 파티션 저장 위치만 결정
+    - parquet가 이미 있으면 skip (force_run 아니면)
+    """
 
-    logger.info(f"📦 전처리 시작: {xlsx_path.name}")
+    logger.info(f"📦 전처리 시작: {xlsx_path.name} (yyyymm={yyyymm})")
+
+    # --------------------------------------------------
+    # 0. 파티션 경로/파일 미리 결정 + skip
+    # --------------------------------------------------
+    yyyymm = str(yyyymm).strip()
+    if len(yyyymm) != 6 or not yyyymm.isdigit():
+        raise ValueError(f"yyyymm 형식이 이상함: {yyyymm} (예: '202601')")
+
+    year_str = yyyymm[:4]
+    month_str = yyyymm[4:6]
+
+    partition_dir = out_dir_root / f"year={year_str}" / f"month={month_str}"
+    partition_dir.mkdir(parents=True, exist_ok=True)
+
+    gold_dir = gold_dir_root / f"year={year_str}" / f"month={month_str}"
+    gold_dir.mkdir(parents=True, exist_ok=True)
+
+    parquet_path = partition_dir / "part.parquet"
+    gold_parquet_path = gold_dir / "part.parquet"
+
+    if parquet_path.exists() and not cfg.force_run:
+        logger.info(f"⏭ Parquet 이미 존재하여 변환 스킵: {parquet_path}")
+        return f"Skipped (already exists): {parquet_path}"
 
     # --------------------------------------------------
     # 1. 엑셀 읽기
@@ -235,7 +340,6 @@ def convert_xlsx_to_parquet(
     else:
         df.columns = [str(c).strip() for c in df.columns]
 
-    col_month = pick_col(["월(Monthly)", "월"], list(df.columns))
     col_sido = pick_col(["시도명"], list(df.columns))
     col_sigungu = pick_col(["시군구"], list(df.columns))
 
@@ -247,7 +351,7 @@ def convert_xlsx_to_parquet(
     # --------------------------------------------------
     # 2. 데이터 정제
     # --------------------------------------------------
-    out = df[[col_month, col_sido, col_sigungu, col_cargo_sales]].copy()
+    out = df[[col_sido, col_sigungu, col_cargo_sales]].copy()
 
     out[col_cargo_sales] = pd.to_numeric(
         out[col_cargo_sales].astype(str).str.replace(",", "").str.strip(),
@@ -260,253 +364,53 @@ def convert_xlsx_to_parquet(
     ]
 
     result = (
-        out.groupby([col_month, col_sido, col_sigungu], dropna=False, as_index=False)[col_cargo_sales]
-        .sum()
+        out[[col_sido, col_sigungu, col_cargo_sales]]
         .rename(columns={
-            col_month: "year_month",
             col_sido: "sido",
             col_sigungu: "sigungu",
             col_cargo_sales: "cargo_sales_count",
         })
     )
+
+    result["sido"] = result["sido"].astype(str).str.strip()
+    result["sigungu"] = result["sigungu"].astype(str).str.strip()
 
     # --------------------------------------------------
     # 🔥 3. 시군구 코드 매핑 (구 포함 안정 버전)
     # --------------------------------------------------
     logger.info("🔗 시군구 코드 매핑 시작")
 
-    mapping_df = pd.read_csv(
-        cfg.sigungu_mapping_csv,
-        encoding="euc-kr"
-    )
+    # SHP_CD 컬럼을 문자열(str)로 지정해서 읽기
+    mapping_df = pd.read_csv(cfg.sigungu_mapping_csv, dtype={'SHP_CD': str})
 
-    mapping_df["법정동코드"] = mapping_df["법정동코드"].astype(str)
-
-    # 5자리 시군구 코드
-    mapping_df["sigungu_code"] = mapping_df["법정동코드"].str[:5]
-
-    # 시도 코드 추출
-    mapping_df["sido_code"] = mapping_df["법정동코드"].str[:2]
-    mapping_df["sido"] = mapping_df["sido_code"].map(SIDO_CODE_MAP)
-
-    # 🔥 법정동명 분리
-    name_split = mapping_df["법정동명"].str.split()
-
-    # 시도명
-    mapping_df["sido"] = mapping_df["sido"]
-
-    # 🔥 시군구명 생성 (구 포함)
-    def build_sigungu(parts):
-        if len(parts) >= 3:
-            return parts[1] + parts[2]  # 고양시 + 덕양구
-        elif len(parts) >= 2:
-            return parts[1]
-        return None
-
-    mapping_df["sigungu"] = name_split.apply(build_sigungu)
-
-    # 🔥 공백 제거 (정규화)
-    def normalize(x):
-        if pd.isna(x):
-            return x
-        return str(x).replace(" ", "").strip()
-
-    mapping_df["sigungu"] = mapping_df["sigungu"].apply(normalize)
-    mapping_df["sido"] = mapping_df["sido"].apply(normalize)
-
-    mapping_df = (
-        mapping_df[["sigungu_code", "sido", "sigungu"]]
-        .drop_duplicates()
-        .dropna()
-    )
-
-    mapping_df = pd.concat([
-        mapping_df,
-        pd.DataFrame({
-            "sigungu_code": ["36110"],
-            "sido": ["세종"],
-            "sigungu": ["세종특별자치시"]
-        })
-    ])
-
-
-    # --------------------------------------------------
-    # 🔥 result도 동일 정규화
-    # --------------------------------------------------
-    result["sido"] = result["sido"].apply(normalize)
-    result["sigungu"] = result["sigungu"].apply(normalize)
-
-    # merge
+    # merge 수행
     result = result.merge(
         mapping_df,
-        on=["sido", "sigungu"],
-        how="left"
-    )
-
-    if result["sigungu_code"].isna().any():
-        logger.warning("⚠ 일부 시군구 코드 매핑 실패 존재")
-
-    # --------------------------------------------------
-    # 4. 월별 계층 저장
-    # --------------------------------------------------
-    result["year_month_dt"] = pd.to_datetime(
-        result["year_month"].astype(str).str.replace("/", "-")
-    )
-
-    unique_months = result["year_month_dt"].unique()
-    saved_count = 0
-
-    for target_dt in unique_months:
-
-        ts = pd.Timestamp(target_dt)
-        year_str = ts.strftime("%Y")
-        month_str = ts.strftime("%m")
-
-        partition_dir = out_dir_root / f"year={year_str}" / f"month={month_str}"
-        partition_dir.mkdir(parents=True, exist_ok=True)
-
-        target_path = partition_dir / "part.parquet"
-
-        if target_path.exists() and not cfg.parquet_overwrite and not cfg.force_run:
-            continue
-
-        monthly_df = result[result["year_month_dt"] == target_dt].copy()
-        monthly_df = monthly_df.drop(columns=["year_month", "year_month_dt"])
-
-        monthly_df.to_parquet(
-            target_path,
-            index=False,
-            compression=cfg.parquet_compression
-        )
-
-        saved_count += 1
-
-    logger.info(f"✅ 계층형 저장 완료: {saved_count}개 월 저장")
-
-    return f"Processed {len(unique_months)} months, Updated {saved_count} files"
-
-def convert_xlsx_to_parquet(
-    xlsx_path: Path,
-    out_dir_root: Path,
-    cfg: Config,
-    logger: logging.Logger
-) -> str:
-
-    logger.info(f"📦 전처리 시작: {xlsx_path.name}")
-
-    # --------------------------------------------------
-    # 1. 엑셀 읽기
-    # --------------------------------------------------
-    df = pd.read_excel(xlsx_path, header=[4, 5], engine="openpyxl")
-
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [flatten_col(col) for col in df.columns]
-    else:
-        df.columns = [str(c).strip() for c in df.columns]
-
-    col_month = pick_col(["월(Monthly)", "월"], list(df.columns))
-    col_sido = pick_col(["시도명"], list(df.columns))
-    col_sigungu = pick_col(["시군구"], list(df.columns))
-
-    cargo_sales_cols = [c for c in df.columns if ("화물" in c and "영업용" in c)]
-    if not cargo_sales_cols:
-        raise KeyError("'화물 영업용' 컬럼을 찾을 수 없습니다.")
-    col_cargo_sales = sorted(cargo_sales_cols, key=len)[0]
-
-    # --------------------------------------------------
-    # 2. 데이터 정제
-    # --------------------------------------------------
-    out = df[[col_month, col_sido, col_sigungu, col_cargo_sales]].copy()
-
-    out[col_cargo_sales] = pd.to_numeric(
-        out[col_cargo_sales].astype(str).str.replace(",", "").str.strip(),
-        errors="coerce"
-    )
-
-    out = out[
-        out[col_sigungu].notna() &
-        (out[col_sigungu].astype(str).str.strip() != "계")
-    ]
-
-    result = (
-        out.groupby([col_month, col_sido, col_sigungu], as_index=False)[col_cargo_sales]
-        .sum()
-        .rename(columns={
-            col_month: "year_month",
-            col_sido: "sido",
-            col_sigungu: "sigungu",
-            col_cargo_sales: "cargo_sales_count",
-        })
-    )
-
-    # 문자열 정리
-    result["sido"] = result["sido"].astype(str).str.strip()
-    result["sigungu"] = result["sigungu"].astype(str).str.strip()
-
-    # --------------------------------------------------
-    # 🔥 3. SHP_CD 매핑
-    # --------------------------------------------------
-    logger.info("🔗 SHP_CD 매핑 시작")
-
-    shp_mapping_path = Path("data/chajoo_dist/_work/csv/SHP_CD_mapping.csv")
-
-    shp_df = pd.read_csv(
-        shp_mapping_path,
-        dtype={"SHP_CD": str}
-    )
-
-    shp_df["sido"] = shp_df["sido"].astype(str).str.strip()
-    shp_df["sigungu"] = shp_df["sigungu"].astype(str).str.strip()
-    shp_df["SHP_CD"] = shp_df["SHP_CD"].astype(str)
-
-    result = result.merge(
-        shp_df[["sido", "sigungu", "SHP_CD"]],
         on=["sido", "sigungu"],
         how="left"
     )
 
     if result["SHP_CD"].isna().any():
-        logger.warning("⚠ SHP_CD 매핑 실패 존재")
+        failed = result[result["SHP_CD"].isna()][["sido", "sigungu"]].drop_duplicates()
+        logger.warning(f"⚠ 일부 시군구 코드 매핑 실패 존재: {len(failed)}개\n{failed.to_string(index=False)}")
 
     # --------------------------------------------------
-    # 4. year / month 분리
+    # 4. Parquet 저장 (한 달치라고 가정하고 result 전체 저장)
     # --------------------------------------------------
-    result["year_month_dt"] = pd.to_datetime(
-        result["year_month"].astype(str).str.replace("/", "-")
+    result.to_parquet(
+        parquet_path,
+        index=False,
+        compression=getattr(cfg, "parquet_compression", "snappy")
     )
 
-    unique_months = result["year_month_dt"].unique()
-    saved_count = 0
+    result.to_parquet(
+        gold_parquet_path,
+        index=False,
+        compression=getattr(cfg, "parquet_compression", "snappy")
+    )
+    logger.info(f"💾 Parquet 저장 완료: {parquet_path} (rows={len(result)})")
 
-    for target_dt in unique_months:
-
-        ts = pd.Timestamp(target_dt)
-        year_str = ts.strftime("%Y")
-        month_str = ts.strftime("%m")
-
-        partition_dir = out_dir_root / f"year={year_str}" / f"month={month_str}"
-        partition_dir.mkdir(parents=True, exist_ok=True)
-
-        parquet_path = partition_dir / "part.parquet"
-        csv_path = partition_dir / "part.csv"
-
-        monthly_df = result[result["year_month_dt"] == target_dt].copy()
-        monthly_df = monthly_df.drop(columns=["year_month_dt"])
-
-        # Parquet
-        if not parquet_path.exists() or cfg.force_run:
-            monthly_df.to_parquet(
-                parquet_path,
-                index=False,
-                compression=cfg.parquet_compression
-            )
-            logger.info(f"💾 Parquet 저장 완료: {parquet_path}")
-
-        saved_count += 1
-
-    logger.info(f"✅ 계층형 저장 완료: {saved_count}개 월 처리")
-
-    return f"Processed {len(unique_months)} months"
+    return f"Saved: {parquet_path} (rows={len(result)})"
 
 
 # =========================
@@ -517,6 +421,14 @@ def main():
     paths = init_run_dirs(cfg)
     logger = build_logger(paths["log_file"])
     notifier = SlackNotifier(cfg.slack_webhook_url, "EXTRACT-차주분포", logger)
+
+    base_date = date.today()
+    year, month = base_date.year, base_date.month
+    yyyymm = None
+    if month == 1:
+        yyyymm = f"{year - 1}12"
+    else:
+        yyyymm = f"{year}{month-1:02d}"
 
     logger.info("===== EXTRACT CHAJOO START =====")
     driver = None
@@ -529,13 +441,20 @@ def main():
         if existing_xlsx and not cfg.force_run:
             logger.warning("⏭ 로컬 엑셀 파일 사용 (Skip Download)")
             xlsx_path = max(existing_xlsx, key=lambda p: p.stat().st_mtime)
+            used_yyyymm=yyyymm
         else:
             driver = build_driver(paths["xlsx"], cfg)
             driver.get(cfg.url)
-            xlsx_path = perform_download(driver, logger, cfg, paths["xlsx"])
+            xlsx_path, used_yyyymm = perform_download(
+                driver,
+                logger,
+                cfg,
+                paths["xlsx"],
+                yyyymm=yyyymm,
+            )
 
         # [STEP 2] Parquet 변환 (변경된 함수 호출)
-        status_msg = convert_xlsx_to_parquet(xlsx_path, paths["parquet"], cfg, logger)
+        status_msg = convert_xlsx_to_parquet(xlsx_path, paths["parquet"], paths["gold"], cfg, logger, yyyymm=used_yyyymm)
 
         # 완료 알림
         notifier.success("작업 완료", f"결과: {status_msg}")
