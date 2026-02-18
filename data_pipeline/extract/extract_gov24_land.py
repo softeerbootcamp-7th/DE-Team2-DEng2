@@ -3,7 +3,7 @@
 # ============================================================
 
 WAIT_SHORT = 3
-WAIT_NORMAL = 10
+WAIT_NORMAL = 20
 RETRY = 1
 
 ORIGINAL_FILE_NAME = "정부24 - 토지(임야)대장 등본 발급(열람) _ 문서출력.pdf"
@@ -111,8 +111,7 @@ def sanitize_filename(name: str) -> str:
 
     return name
 
-def rename_pdf_to_address(addr: dict):
-
+def build_pdf_filename(addr: dict) -> str:
     base = addr["base"]
     main = addr["main"]
     sub = addr["sub"]
@@ -123,7 +122,15 @@ def rename_pdf_to_address(addr: dict):
     else:
         name = f"{base}_{main}_{date}"
 
-    safe_name = sanitize_filename(name) + ".pdf"
+    return sanitize_filename(name) + ".pdf"
+
+def pdf_already_exists(addr: dict) -> bool:
+    filename = build_pdf_filename(addr)
+    path = os.path.join(OUTPUT_DIR, filename)
+    return os.path.exists(path)
+
+def rename_pdf_to_address(addr: dict):
+    safe_name = build_pdf_filename(addr)
 
     pdf_path = os.path.join(OUTPUT_DIR, ORIGINAL_FILE_NAME)
 
@@ -573,6 +580,12 @@ if __name__ == "__main__":
 
     for idx, addr in enumerate(address_list, start=args.start):
 
+        if pdf_already_exists(addr):
+            logging.info(
+                f"⏭ 파일이 이미 존재합니다. → skip idx:{idx} → {build_full_address(addr)}"
+            )
+            continue
+
         success = False
 
         for attempt in range(RETRY + 1):
@@ -580,7 +593,7 @@ if __name__ == "__main__":
                 run_land_register(driver, addr)
                 logging.info(f"✅ 다운 완료 idx:{idx} → {build_full_address(addr)}")
 
-                time.sleep(1)
+                time.sleep(0.5)
                 close_modal_popup(driver)
 
                 success = True
