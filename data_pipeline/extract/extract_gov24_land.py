@@ -2,9 +2,9 @@
 # CONFIG
 # ============================================================
 
-WAIT_SHORT = 3
+WAIT_SHORT = 5
 WAIT_NORMAL = 20
-RETRY = 1
+RETRY = 0
 
 ORIGINAL_FILE_NAME = "정부24 - 토지(임야)대장 등본 발급(열람) _ 문서출력.pdf"
 
@@ -103,7 +103,7 @@ def build_full_address(addr: dict) -> str:
 def sanitize_filename(name: str) -> str:
     # 파일명에 못 쓰는 문자 제거
     invalid = r'<>:"/\\|?*'
-    for ch in invalid:
+    for ch in invalid:앗
         name = name.replace(ch, "_")
 
     # 공백 정리
@@ -367,17 +367,17 @@ def select_form_options(driver):
     ))) 
     driver.execute_script("arguments[0].click();", land_radio) 
     
-    # 토지이동연혁 인쇄 유무 = 인쇄함 
+    # 토지이동연혁 인쇄 유무 = 인쇄안함 
     history_radio = wait.until(EC.element_to_be_clickable(( 
         By.XPATH, 
-        "//input[@type='radio' and contains(@name,'토지연혁구분') and @value='Y']" 
+        "//input[@type='radio' and contains(@name,'토지연혁구분') and @value='N']" 
     ))) 
     driver.execute_script("arguments[0].click();", history_radio) 
     
-    # 소유권연혁 인쇄 유무 = 인쇄함 
+    # 소유권연혁 인쇄 유무 = 인쇄안함 
     ownership_radio = wait.until(EC.element_to_be_clickable(( 
         By.XPATH, 
-        "//input[@type='radio' and contains(@name,'소유권연혁') and @value='Y']" 
+        "//input[@type='radio' and contains(@name,'소유권연혁') and @value='N']" 
     ))) 
     driver.execute_script("arguments[0].click();", ownership_radio) 
     
@@ -455,29 +455,38 @@ def fill_form(driver, address):
 # ============================================================
 
 def get_pdf(driver):
-    wait = WebDriverWait(driver, WAIT_NORMAL)
+    wait = WebDriverWait(driver, WAIT_SHORT)
 
     # 첫 번째 "문서출력" 버튼 클릭
-    print_btn = wait.until(EC.element_to_be_clickable((
-        By.XPATH,
-        "(//button[normalize-space()='문서출력'])[1]"
-    )))
-    driver.execute_script("arguments[0].click();", print_btn)
+    try:
+        print_btn = wait.until(EC.element_to_be_clickable((
+            By.XPATH,
+            "(//button[normalize-space()='문서출력'])[1]"
+        )))
+        driver.execute_script("arguments[0].click();", print_btn)
+    except:
+        return False
 
     # 팝업 전환
     main_window = driver.current_window_handle
 
-    WebDriverWait(driver, WAIT_SHORT).until(
-        lambda d: len(d.window_handles) > 1
-    )
-    driver.switch_to.window(driver.window_handles[-1])
+    try:
+        WebDriverWait(driver, WAIT_NORMAL).until(
+            lambda d: len(d.window_handles) > 1
+        )
+    except:
+        return False
 
+    driver.switch_to.window(driver.window_handles[-1])
     time.sleep(2)
 
-    # 인쇄 버튼 클릭
-    print_btn = WebDriverWait(driver, WAIT_NORMAL).until(
-        EC.element_to_be_clickable((By.ID, "btnPrint"))
-    )
+    try:
+        # 인쇄 버튼 클릭
+        print_btn = WebDriverWait(driver, WAIT_NORMAL).until(
+            EC.element_to_be_clickable((By.ID, "btnPrint"))
+        )
+    except:
+        return False
 
     ActionChains(driver)\
         .move_to_element(print_btn)\
@@ -487,13 +496,17 @@ def get_pdf(driver):
     
     time.sleep(2)
 
-    WebDriverWait(driver, WAIT_NORMAL).until(
-        EC.element_to_be_clickable((By.ID, "btnPrint"))
-    )
+    try:
+        WebDriverWait(driver, WAIT_NORMAL).until(
+            EC.element_to_be_clickable((By.ID, "btnPrint"))
+        )
+    except:
+        return False
 
     driver.close()
     driver.switch_to.window(main_window)
     
+    return True
 
 # ============================================================
 # MAIN WORKFLOW
@@ -521,8 +534,12 @@ def run_land_register(driver, address):
             time.sleep(1)
 
     fill_form(driver, address)
-    get_pdf(driver)
-    rename_pdf_to_address(address)
+    
+    if get_pdf(driver):
+        rename_pdf_to_address(address)
+    else:
+        raise Exception
+
 
 
 # ============================================================
@@ -593,7 +610,7 @@ if __name__ == "__main__":
                 run_land_register(driver, addr)
                 logging.info(f"✅ 다운 완료 idx:{idx} → {build_full_address(addr)}")
 
-                time.sleep(0.5)
+                time.sleep(1)
                 close_modal_popup(driver)
 
                 success = True
