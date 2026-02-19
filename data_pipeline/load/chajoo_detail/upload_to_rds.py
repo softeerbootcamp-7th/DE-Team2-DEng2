@@ -19,7 +19,7 @@ from data_pipeline.load.parquet_loader import (
     insert_rows,
     read_parquet_rows,
 )
-from data_pipeline.load.chajoo_dist.upload_to_local_db import CHAJU_CONFIG
+from data_pipeline.load.chajoo_detail.upload_to_local_db import CHAJU_CONFIG
 
 DEFAULT_DIR = "data/gold/chajoo_detail"
 
