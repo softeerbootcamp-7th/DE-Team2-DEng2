@@ -1,0 +1,21 @@
+target-version = "py312"
+line-length = 120
+extend-exclude = ["data/", ".venv/", "*.ipynb"]
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort (import 순서)
+    "UP",   # pyupgrade (최신 문법 권장)
+]
+ignore = [
+    "E501",  # line-length는 formatter가 처리
+]
+
+[lint.isort]
+known-first-party = ["api", "data_pipeline", "dashboard"]
+
+[format]
+quote-style = "double"

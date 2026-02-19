@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 # slack_utils.py를 찾기 위해 상위 경로 추가
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from slack_utils import SlackNotifier
+from data_pipeline.utils.slack_utils import SlackNotifier
 
 # =========================
 # ENV

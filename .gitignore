@@ -20,3 +20,7 @@ __pycache__/
 *.csv
 
 test/
+
+## 6. 기타
+.ruff_cache
+

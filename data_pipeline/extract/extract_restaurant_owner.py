@@ -19,7 +19,7 @@ import pandas as pd
 load_dotenv()
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from slack_utils import SlackNotifier
+from data_pipeline.utils.slack_utils import SlackNotifier
 
 
 # =========================

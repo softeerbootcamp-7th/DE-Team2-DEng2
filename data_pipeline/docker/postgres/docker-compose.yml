@@ -1,0 +1,29 @@
+services:
+  postgres-local:
+    image: postgres:16
+    container_name: postgres-local
+    hostname: postgres-local
+    environment:
+      - POSTGRES_DB=${LOCAL_PG_DB:-deng2}
+      - POSTGRES_USER=${LOCAL_PG_USER:-deng2}
+      - POSTGRES_PASSWORD=${LOCAL_PG_PASSWORD:-deng2}
+      - TZ=Asia/Seoul
+    ports:
+      - "${LOCAL_PG_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres-local-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LOCAL_PG_USER:-deng2} -d ${LOCAL_PG_DB:-deng2}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db-network
+
+volumes:
+  postgres-local-data:
+
+networks:
+  db-network:
+    name: deng2-postgres-network
+    driver: bridge
