@@ -18,3 +18,5 @@ __pycache__/
 # 5. Data
 *.pdf
 *.csv
+
+test/
