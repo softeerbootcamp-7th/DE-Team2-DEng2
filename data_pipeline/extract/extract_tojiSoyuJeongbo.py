@@ -257,7 +257,7 @@ def run(cfg: Config, logger: logging.Logger, start_date: str, end_date: str, bas
 
     try:
         # [START]
-        notifier.info("작업 시작", f"수집 기간: {start_date} ~ {end_date}")
+        notifier.info("작업 시작", f"{y}년 {m}월 데이터 추출 시작")
 
         # 1️⃣ ZIP 다운로드 단계
         if has_any_zip(zip_dir):
@@ -289,7 +289,8 @@ def run(cfg: Config, logger: logging.Logger, start_date: str, end_date: str, bas
 
         # 3️⃣ PARQUET 변환 단계
         if has_any_parquet(Path(cfg.out_dir), y, m):
-            logger.warning(f"⏭ {y}-{m} Parquet 결과가 이미 존재하여 변환을 건너뜁니다.")
+            logger.info(f"Skipped: {y}년 {m}월 데이터가 이미 존재합니다")
+            notifier.info("작업 완료", f"Skipped: {y}년 {m}월 데이터가 이미 존재합니다")
         else:
             csv_files = list(unzip_dir.rglob("*.csv"))
             logger.info(f"📦 CSV -> Parquet 변환 시작 (총 {len(csv_files)}개)")
@@ -314,8 +315,8 @@ def run(cfg: Config, logger: logging.Logger, start_date: str, end_date: str, bas
 
             logger.info(f"✅ 변환 공정 종료 (성공: {success_count}/{len(csv_files)})")
 
-        # [SUCCESS]
-        notifier.success("작업 완료", f"{y}년 {m}월 데이터 적재에 성공했습니다. (성공: {success_count}건)")
+            # [SUCCESS]
+            notifier.success("작업 완료", f"{y}년 {m}월 데이터 추출 완료 (성공: {success_count}건)")
 
     except Exception as e:
         # [CRITICAL ERROR]

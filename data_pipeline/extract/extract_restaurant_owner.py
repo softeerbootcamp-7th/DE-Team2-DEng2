@@ -285,10 +285,10 @@ def search_and_save_all_pages(
             total_pages = _setup_search(page)
             if total_pages == 0:
                 logger.warning(f"검색 결과 없음: {address}")
-                notifier.info("검색 결과 없음", f"{sido_name} {address} 에 해당하는 데이터가 없습니다.")
+                notifier.error("검색 결과 없음", f"{sido_name} {address} 에 해당하는 데이터가 없습니다.")
                 browser.close()
                 return False
-            
+
             # end_page 결정
             actual_end = min(end_page, total_pages) if end_page else total_pages
             if start_page > actual_end:
@@ -429,7 +429,7 @@ def search_and_save_all_pages(
                     f"범위: {start_page}~{actual_end}p / 전체 {total_pages}p"
                 )
             else:
-                notifier.info(
+                notifier.error(
                     "부분 완료 ⚠️",
                     f"{sido_name} {address}\n"
                     f"완료: {last_done}p / 목표: {actual_end}p\n"

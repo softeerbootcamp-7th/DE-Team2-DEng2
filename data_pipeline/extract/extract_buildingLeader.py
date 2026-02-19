@@ -219,11 +219,12 @@ def run(cfg: HubConfig):
             # 이미 parquet 결과물이 있는지 확인
             if any(paths["parquet_root"].glob("region=*")):
                 logger.info(f"⏭  {datestr} 데이터가 이미 존재합니다. 수집을 건너뜁니다.")
+                notifier.success("작업 완료", f"{data_year}년 {data_month:02d}월 데이터가 이미 존재합니다")
             else:
                 # 2. 로거 교체 및 수집 시작
                 logger = build_logger(paths["logs"] / "run.log")
                 logger.info(f"🚀 신규 데이터 발견! 수집 시작: {data_year}년 {data_month}월")
-                notifier.info("작업 시작", f"대상 기간: {data_year}년 {data_month:02d}월")
+                notifier.info("작업 시작", f"{data_year}년 {data_month:02d}월 데이터 추출 시작")
 
                 # 3. 다운로드 버튼 찾기 및 클릭
                 download_btn = None
@@ -256,7 +257,9 @@ def run(cfg: HubConfig):
                         # Hive 파티션 경로(paths["parquet_root"])를 그대로 전달
                         txt_to_parquet_by_region(txt_file, paths["parquet_root"])
 
-                notifier.success("작업 완료", f"{data_year}년 {data_month:02d}월 데이터 파티셔닝 완료")
+
+                logger.info(f"{data_year}년 {data_month:02d}월 데이터 추출 완료")
+                notifier.success("작업 완료", f"{data_year}년 {data_month:02d}월 데이터 추출 완료")
 
             # 5. 정리 (데이터 시점 기준으로 M, M-1 외 정리)
             # remove_old_data_runs(cfg, data_year, data_month, logger)

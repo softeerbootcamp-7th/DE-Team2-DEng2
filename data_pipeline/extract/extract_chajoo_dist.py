@@ -38,7 +38,7 @@ class Config:
     slack_webhook_url: Optional[str] = os.getenv("SLACK_WEBHOOK_URL")
     parquet_overwrite: bool = False
     force_run: bool = False
-    sigungu_mapping_csv: str = "data/bronze/chajoo_dist/_work/csv/SHP_CD_mapping.csv"
+    sigungu_mapping_csv: str = "data/bronze/chajoo_dist/_work/SHP_CD_mapping.csv"
 
 # =========================
 # Logger & Helpers
@@ -339,7 +339,7 @@ def convert_xlsx_to_parquet(
 
     if parquet_path.exists() and not cfg.force_run:
         logger.info(f"⏭ Parquet 이미 존재하여 변환 스킵: {parquet_path}")
-        return f"Skipped (already exists): {parquet_path}"
+        return f"Skipped: {year_str}년 {month_str}월 데이터가 이미 존재합니다."
 
     # --------------------------------------------------
     # 1. 엑셀 읽기
@@ -421,7 +421,7 @@ def convert_xlsx_to_parquet(
     )
     logger.info(f"💾 Parquet 저장 완료: {parquet_path} (rows={len(result)})")
 
-    return f"Saved: {parquet_path} (rows={len(result)})"
+    return f"{year_str}년 {month_str}월 데이터 추출 완료"
 
 
 # =========================
@@ -434,6 +434,8 @@ def main():
     base_date = date.today()
     year, month = base_date.year, base_date.month
     target_yyyymm = f"{year - 1}12" if month == 1 else f"{year}{month-1:02d}"
+    year = target_yyyymm[:4]
+    month = target_yyyymm[4:6]
 
     # 2. 경로 초기화 (데이터 기준월 기반)
     paths = init_run_dirs(cfg, target_yyyymm)
@@ -444,12 +446,12 @@ def main():
     driver = None
 
     try:
-        notifier.info("작업 시작", f"대상 기간: {target_yyyymm} 전처리 프로세스 시작")
+        notifier.info("작업 시작", f"{year}년 {month}월 데이터 추출 시작")
 
         # [STEP 1] XLSX 확보
         # 해당 월의 폴더 내에 이미 엑셀이 있는지 확인
         existing_xlsx = list(paths["xlsx"].glob("*.xlsx"))
-        
+
         if existing_xlsx and not cfg.force_run:
             logger.warning(f"⏭  {target_yyyymm} 로컬 엑셀 파일 사용 (Skip Download)")
             xlsx_path = max(existing_xlsx, key=lambda p: p.stat().st_mtime)
@@ -478,7 +480,7 @@ def main():
             yyyymm=used_yyyymm
         )
 
-        notifier.success("작업 완료", f"결과: {status_msg}")
+        notifier.success("작업 완료", f"{status_msg}")
         logger.info(f"===== SUCCESS ({status_msg}) =====")
 
     except Exception as e:
