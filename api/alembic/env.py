@@ -16,11 +16,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 모든 ORM 모델 Import 
-from api.models.base import Base  
-import api.models.restaurant  
-import api.models.chajoo  
-import api.models.truckhelper 
+# 모든 ORM 모델 Import
+from api.models.base import Base
+import api.models.restaurant
+import api.models.chajoo
+import api.models.truckhelper
+import api.models.report_history
 
 target_metadata = Base.metadata
 
