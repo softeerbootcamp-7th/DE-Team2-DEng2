@@ -275,6 +275,12 @@ def run(cfg: HubConfig):
                 try: shutil.rmtree(temp_log_dir)
                 except: pass
 
+def run_workflow(**kwargs):
+    cfg = HubConfig(
+        headless=True
+    )
+    run(cfg)
+
 if __name__ == "__main__":
     run(HubConfig())
     

@@ -26,3 +26,6 @@ test/
 
 spark-events/
 
+airflow/config
+airflow/logs
+

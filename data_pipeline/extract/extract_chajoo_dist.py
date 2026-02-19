@@ -12,6 +12,7 @@ import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from dotenv import load_dotenv
@@ -111,6 +112,18 @@ def pick_col(cands: List[str], columns: List[str]) -> str:
 # =========================
 def build_driver(download_dir: Path, cfg: Config) -> webdriver.Chrome:
     opts = Options()
+
+    # -------------------------
+    # 환경별 분기 (핵심)
+    # -------------------------
+    if os.path.exists("/usr/bin/chromium"):
+        # ✅ 컨테이너 (Airflow / Linux)
+        opts.binary_location = "/usr/bin/chromium"
+        service = Service("/usr/bin/chromedriver")
+    else:
+        # ✅ 로컬 (macOS / Windows)
+        service = Service()  # Selenium 자동 탐색
+
     if cfg.headless:
         opts.add_argument("--headless=new")
 
@@ -129,7 +142,7 @@ def build_driver(download_dir: Path, cfg: Config) -> webdriver.Chrome:
     }
     opts.add_experimental_option("prefs", prefs)
 
-    driver = webdriver.Chrome(options=opts)
+    driver = webdriver.Chrome(service=service, options=opts)
     driver.set_page_load_timeout(60)
     return driver
 
@@ -429,7 +442,7 @@ def convert_xlsx_to_parquet(
 # =========================
 def main():
     cfg = Config()
-    
+
     # 1. 대상 월 결정 (초기 로깅용)
     base_date = date.today()
     year, month = base_date.year, base_date.month
@@ -490,6 +503,9 @@ def main():
     finally:
         if driver: driver.quit()
 
+def run_workflow(**kwargs):
+    cfg = Config(headless=True)
+    main()
 
 if __name__ == "__main__":
     main()
