@@ -17,8 +17,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from dotenv import load_dotenv
 
 # slack_utils.py 경로 추가 (기존 구조 유지)
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-from slack_utils import SlackNotifier
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+from data_pipeline.utils.slack_utils import SlackNotifier
+
 
 # =========================
 # ENV & Config
@@ -29,7 +30,7 @@ load_dotenv()
 class Config:
     # 수집 대상 URL
     url: str = "https://stat.molit.go.kr/portal/cate/statView.do?hRsId=58&hFormId=5498&hSelectId=5498&sStyleNum=2&sStart=202601&sEnd=202601&hPoint=00&hAppr=1&oFileName=&rFileName=&midpath="
-    project_root: str = "data/chajoo_dist"
+    project_root: str = "data/bronze/chajoo_dist"
     retries: int = 3
     timeout_sec: int = 120
     headless: bool = True  # 파일 다운로드를 위해 가급적 False 권장
@@ -37,7 +38,7 @@ class Config:
     slack_webhook_url: Optional[str] = os.getenv("SLACK_WEBHOOK_URL")
     parquet_overwrite: bool = False
     force_run: bool = False
-    sigungu_mapping_csv: str = "data/chajoo_dist/_work/csv/SHP_CD_mapping.csv"
+    sigungu_mapping_csv: str = "data/bronze/chajoo_dist/_work/csv/SHP_CD_mapping.csv"
 
 # =========================
 # Logger & Helpers
@@ -50,6 +51,8 @@ def build_logger(log_file: Path) -> logging.Logger:
     
     sh = logging.StreamHandler(sys.stdout)
     sh.setFormatter(fmt)
+    # 로그 파일 부모 디렉토리 생성 보장
+    log_file.parent.mkdir(parents=True, exist_ok=True)
     fh = logging.FileHandler(log_file, encoding="utf-8")
     fh.setFormatter(fmt)
     
@@ -57,20 +60,28 @@ def build_logger(log_file: Path) -> logging.Logger:
     logger.addHandler(fh)
     return logger
 
-def init_run_dirs(cfg: Config) -> dict:
+def init_run_dirs(cfg: Config, yyyymm: str) -> dict:
+    """used_yyyymm (YYYYMM) 기반으로 파티셔닝된 경로 생성"""
     base = Path(cfg.project_root)
+    year = yyyymm[:4]
+    month = yyyymm[4:6]
+
+    # 공통 파티션 경로
+    partition_path = f"year={year}/month={month}"
 
     paths = {
         "base": base,
-        "work": base / "_work",
-        "xlsx": base / "_work" / "xlsx",
-        "parquet": base / "parquet",
-        "log_file": base / "_work" / "run.log",
-        "gold": Path("data/output/gold/chajoo_dist"),
+        "work": base / "_work" / partition_path,
+        "xlsx": base / "_work" / partition_path / "xlsx",
+        "log_file": base / "_work" / partition_path / "run.log",
+        "parquet": base / "parquet" / partition_path,
+        "gold": Path("data/gold/chajoo_dist") / partition_path,
     }
-    paths["xlsx"].mkdir(parents=True, exist_ok=True)
-    paths["parquet"].mkdir(parents=True, exist_ok=True)
-    paths["work"].mkdir(parents=True, exist_ok=True)
+
+    # 필요한 모든 디렉토리 생성
+    for key in ["xlsx", "parquet", "gold"]:
+        paths[key].mkdir(parents=True, exist_ok=True)
+
     return paths
 
 # =========================
@@ -418,45 +429,55 @@ def convert_xlsx_to_parquet(
 # =========================
 def main():
     cfg = Config()
-    paths = init_run_dirs(cfg)
+    
+    # 1. 대상 월 결정 (초기 로깅용)
+    base_date = date.today()
+    year, month = base_date.year, base_date.month
+    target_yyyymm = f"{year - 1}12" if month == 1 else f"{year}{month-1:02d}"
+
+    # 2. 경로 초기화 (데이터 기준월 기반)
+    paths = init_run_dirs(cfg, target_yyyymm)
     logger = build_logger(paths["log_file"])
     notifier = SlackNotifier(cfg.slack_webhook_url, "EXTRACT-차주분포", logger)
 
-    base_date = date.today()
-    year, month = base_date.year, base_date.month
-    yyyymm = None
-    if month == 1:
-        yyyymm = f"{year - 1}12"
-    else:
-        yyyymm = f"{year}{month-1:02d}"
-
-    logger.info("===== EXTRACT CHAJOO START =====")
+    logger.info(f"===== EXTRACT CHAJOO START (Target: {target_yyyymm}) =====")
     driver = None
 
     try:
-        notifier.info("작업 시작", "국토부 차주분포 데이터 전처리 프로세스 시작")
+        notifier.info("작업 시작", f"대상 기간: {target_yyyymm} 전처리 프로세스 시작")
 
         # [STEP 1] XLSX 확보
+        # 해당 월의 폴더 내에 이미 엑셀이 있는지 확인
         existing_xlsx = list(paths["xlsx"].glob("*.xlsx"))
+        
         if existing_xlsx and not cfg.force_run:
-            logger.warning("⏭ 로컬 엑셀 파일 사용 (Skip Download)")
+            logger.warning(f"⏭  {target_yyyymm} 로컬 엑셀 파일 사용 (Skip Download)")
             xlsx_path = max(existing_xlsx, key=lambda p: p.stat().st_mtime)
-            used_yyyymm=yyyymm
+            used_yyyymm = target_yyyymm
         else:
             driver = build_driver(paths["xlsx"], cfg)
             driver.get(cfg.url)
+            # download_dir를 파티션된 xlsx 경로로 전달
             xlsx_path, used_yyyymm = perform_download(
                 driver,
                 logger,
                 cfg,
                 paths["xlsx"],
-                yyyymm=yyyymm,
+                yyyymm=target_yyyymm,
             )
 
-        # [STEP 2] Parquet 변환 (변경된 함수 호출)
-        status_msg = convert_xlsx_to_parquet(xlsx_path, paths["parquet"], paths["gold"], cfg, logger, yyyymm=used_yyyymm)
+        # [STEP 2] Parquet 변환
+        # convert_xlsx_to_parquet 내부에서도 paths['parquet']와 paths['gold']를 사용하도록 수정 가능하나, 
+        # 기존 함수 구조를 유지하면서 인자만 전달합니다.
+        status_msg = convert_xlsx_to_parquet(
+            xlsx_path, 
+            Path(cfg.project_root) / "parquet", # root 전달 (함수 내부에서 파티션 생성)
+            Path("data/gold/chajoo_dist"),      # root 전달
+            cfg, 
+            logger, 
+            yyyymm=used_yyyymm
+        )
 
-        # 완료 알림
         notifier.success("작업 완료", f"결과: {status_msg}")
         logger.info(f"===== SUCCESS ({status_msg}) =====")
 
@@ -466,6 +487,7 @@ def main():
         sys.exit(1)
     finally:
         if driver: driver.quit()
+
 
 if __name__ == "__main__":
     main()

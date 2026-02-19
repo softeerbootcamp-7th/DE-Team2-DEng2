@@ -463,7 +463,7 @@ def main():
     region = args.sido[:2]
 
     base_path = Path(Config.project_root)
-    work_dir = base_path / "_work"
+    work_dir = base_path / f"_work/year={year}/month={month}/region={region}"
     parquet_dir = base_path / f"parquet/year={year}/month={month}/region={region}"
 
     work_dir.mkdir(parents=True, exist_ok=True)

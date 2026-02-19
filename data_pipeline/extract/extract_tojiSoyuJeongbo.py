@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # slack_utils.py를 찾기 위해 상위 경로 추가
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 try:
     from data_pipeline.utils.slack_utils import SlackNotifier
 except ImportError:
@@ -59,9 +59,9 @@ SIDO_NAME_MAP = {v: k for k, v in SIDO_CODE.items()}
 class Config:
     ds_id: str = "12"
     cookie_path: str = "data_pipeline/extract/secrets/vworld_cookies.json"
-    headless: bool = False
-    work_dir: str = "data/tojiSoyuJeongbo/_work"
-    out_dir: str = "data/tojiSoyuJeongbo/parquet"
+    headless: bool = True
+    work_dir: str = "data/bronze/tojiSoyuJeongbo/_work"
+    out_dir: str = "data/bronze/tojiSoyuJeongbo/parquet"
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     format_select: str = "CSV"
@@ -159,7 +159,7 @@ def get_driver(cfg: Config, download_dir: Path) -> webdriver.Chrome:
 def load_cookies(driver: webdriver.Chrome, cfg: Config) -> None:
     if not Path(cfg.cookie_path).exists():
         raise FileNotFoundError(f"쿠키 파일이 없습니다: {cfg.cookie_path}")
-    
+
     cookies = json.loads(Path(cfg.cookie_path).read_text(encoding="utf-8"))
     for attempt in range(1, cfg.retries + 1):
         driver.get("https://www.vworld.kr/")
@@ -237,21 +237,23 @@ def has_any_parquet(out_dir: Path, y: str, m: str) -> bool:
 # Main Execution Logic
 # =========================================================
 
-def run(cfg: Config, logger: logging.Logger) -> None:
+def run(cfg: Config, logger: logging.Logger, start_date: str, end_date: str, base_work_dir: Path) -> None:
     notifier = SlackNotifier(cfg.slack_webhook_url, "EXTRACT-토지소유정보", logger)
-    start_date, end_date = (cfg.start_date, cfg.end_date) if cfg.start_date else previous_month_range()
     y, m = start_date.split("-")[:2]
 
-    work_dir = Path(cfg.work_dir)
-    zip_dir = work_dir / "per_row_zips" / f"{start_date}_to_{end_date}"
-    unzip_dir = work_dir / "unzipped" / f"{start_date}_to_{end_date}"
+    # 하위 디렉토리 설정
+    zip_dir = base_work_dir / "per_row_zips"
+    unzip_dir = base_work_dir / "unzipped"
+
+    zip_dir.mkdir(parents=True, exist_ok=True)
+    unzip_dir.mkdir(parents=True, exist_ok=True)
+
+    # 폴더 생성 (parents=True로 상위 연/월 폴더까지 한 번에 생성)
     zip_dir.mkdir(parents=True, exist_ok=True)
     unzip_dir.mkdir(parents=True, exist_ok=True)
 
     driver = None
     success_count = 0
-    is_skipped = False
-
 
     try:
         # [START]
@@ -328,9 +330,21 @@ def run(cfg: Config, logger: logging.Logger) -> None:
 
 def main():
     cfg = Config()
-    logger = build_logger(Path(cfg.work_dir))
-    logger.info("🚀 파이프라인 가동")
-    run(cfg, logger)
+    
+    # 1. 날짜 결정 (Config에 있으면 쓰고, 없으면 지난달)
+    start_date, end_date = (cfg.start_date, cfg.end_date) if cfg.start_date else previous_month_range()
+    y, m = start_date.split("-")[:2]
+
+    # 2. 로그 및 작업 경로 설정: _work/year=YYYY/month=MM/
+    base_work_dir = Path(cfg.work_dir) / f"year={y}" / f"month={m}"
+    base_work_dir.mkdir(parents=True, exist_ok=True) # 로그를 남기기 위해 폴더 먼저 생성
+
+    # 3. 로거 빌드 (해당 경로 안에 run.log 생성)
+    logger = build_logger(base_work_dir)
+    logger.info(f"🚀 파이프라인 가동 (대상 기간: {start_date} ~ {end_date})")
+
+    # 4. 실행 (결정된 경로들을 run 함수에 전달)
+    run(cfg, logger, start_date, end_date, base_work_dir)
 
 if __name__ == "__main__":
     main()
