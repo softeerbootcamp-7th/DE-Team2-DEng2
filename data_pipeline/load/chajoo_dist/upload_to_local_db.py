@@ -2,13 +2,8 @@
 차주 데이터 → 로컬 Docker PostgreSQL 적재
 ==========================================
 
-data/output/gold_stage/chajoo_dist/year=YYYY/month=MM 구조의 Parquet 파일을 자동으로 찾아
+data/gold/chajoo_dist/year=YYYY/month=MM 구조의 Parquet 파일을 자동으로 찾아
 로컬 PostgreSQL chajoo_dist 테이블에 적재
-
-사용:
-    python load/chajoo_dist/upload_to_local_db.py
-    python load/chajoo_dist/upload_to_local_db.py --local-dir data/output/gold_stage/chajoo_dist
-    python load/chajoo_dist/upload_to_local_db.py --dry-run
 """
 import argparse
 import sys
@@ -18,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from api.models.chaju import ChajooDist
+from api.models.chajoo import ChajooDist
 from api.session import create_engine_for_mode
 from data_pipeline.load.parquet_loader import (
     TableConfig,
@@ -27,7 +22,7 @@ from data_pipeline.load.parquet_loader import (
     read_parquet_rows,
 )
 
-DEFAULT_DIR = "data/output/gold_stage/chajoo_dist"
+DEFAULT_DIR = "data/gold/chajoo_dist"
 
 CHAJU_CONFIG = TableConfig(
     model=ChajooDist,

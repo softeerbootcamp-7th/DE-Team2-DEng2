@@ -2,16 +2,8 @@
 Restaurant → 로컬 Docker PostgreSQL 적재
 ==============================================
 
-data/output/gold_stage/restaurant에서 최신 연도/월 폴더를 자동으로 찾아
+data/gold/restaurant_master에서 최신 연도/월 폴더를 자동으로 찾아
 하위 Parquet 파일들을 로컬 PostgreSQL에 적재
-
-restaurant_master 적재 후, 신규 (업체명, 도로명주소) 건을
-restaurant_status 테이블 INSERT
-
-사용:
-    python load/restaurant/upload_to_local_db.py
-    python load/restaurant/upload_to_local_db.py --local-dir data/output/gold_stage/restaurant
-    python load/restaurant/upload_to_local_db.py --dry-run
 """
 import argparse
 import sys
@@ -35,7 +27,7 @@ from data_pipeline.load.parquet_loader import (
     read_parquet_rows,
 )
 
-DEFAULT_DIR = "data/output/gold_stage/restaurant"
+DEFAULT_DIR = "data/gold/restaurant_master"
 
 RESTAURANT_CONFIG = TableConfig(
     model=RestaurantMaster,
@@ -45,42 +37,6 @@ RESTAURANT_CONFIG = TableConfig(
     snapshot_keys=("year", "month"),
 )
 
-
-def sync_restaurant_status(engine: Engine, rows: list[dict[str, Any]]) -> int:
-    """
-    restaurant_master에 적재된 rows 중 restaurant_status에 없는
-    신규 (업체명, 도로명주소) 건을 INSERT
-    나머지 컬럼은 default/null로 설정
-    """
-    # rows에서 고유한 (업체명, 도로명주소) 추출
-    new_pairs = {(r["업체명"], r["도로명주소"]) for r in rows if r.get("업체명") and r.get("도로명주소")}
-    if not new_pairs:
-        return 0
-
-    with Session(engine) as session:
-        # DB에 이미 존재하는 쌍 조회
-        existing = session.execute(
-            select(
-                RestaurantStatus.__table__.c["업체명"],
-                RestaurantStatus.__table__.c["도로명주소"],
-            )
-        ).fetchall()
-        existing_set = {(row[0], row[1]) for row in existing}
-
-        # 신규 건만 필터
-        to_insert = [
-            {"업체명": name, "도로명주소": addr}
-            for name, addr in new_pairs
-            if (name, addr) not in existing_set
-        ]
-
-        if to_insert:
-            session.execute(insert(RestaurantStatus.__table__), to_insert)
-            session.commit()
-
-    if to_insert:
-        print(f"[STATUS] restaurant_status에 신규 {len(to_insert)}건 INSERT")
-    return len(to_insert)
 
 
 def parse_args() -> argparse.Namespace:
@@ -135,8 +91,6 @@ def main() -> None:
     inserted = insert_rows(engine, all_rows, snapshot=snapshot, config=RESTAURANT_CONFIG, batch_size=args.batch_size)
     print(f"[DONE] {RESTAURANT_CONFIG.table_name}에 {inserted}건 적재 완료")
 
-    # 4) restaurant_status 신규 건 연동
-    sync_restaurant_status(engine, all_rows)
     engine.dispose()
 
 

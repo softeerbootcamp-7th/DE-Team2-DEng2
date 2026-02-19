@@ -2,14 +2,8 @@
 트럭헬퍼 차고지 → 로컬 Docker PostgreSQL 적재
 ==================================================
 
-
-data/output/gold_stage/truckhelper/year=YYYY/month=MM 구조의 Parquet 파일을 자동으로 찾아
+data/gold/truckhelper_parking_area/year=YYYY/month=MM 구조의 Parquet 파일을 자동으로 찾아
 로컬 PostgreSQL truckhelper_parking_area 테이블에 적재
-
-사용:
-    python load/truckhelper/upload_to_local_db.py
-    python load/truckhelper/upload_to_local_db.py --local-dir data/output/gold_stage/truckhelper
-    python load/truckhelper/upload_to_local_db.py --dry-run
 """
 import argparse
 import sys
@@ -28,7 +22,7 @@ from data_pipeline.load.parquet_loader import (
     read_parquet_rows,
 )
 
-DEFAULT_DIR = "data/output/gold_stage/truckhelper"
+DEFAULT_DIR = "data/gold/truckhelper_parking_area"
 
 TRUCKHELPER_CONFIG = TableConfig(
     model=TruckhelperParkingArea,

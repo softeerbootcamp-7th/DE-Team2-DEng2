@@ -1,8 +1,8 @@
 """
-차주 데이터 → AWS RDS PostgreSQL 적재
+차주 z-score 데이터 → AWS RDS PostgreSQL 적재 
 ======================================
 
-data/gold/chajoo_dist/year=YYYY/month=MM 구조의 Parquet 파일을 자동으로 찾아
+data/gold/chajoo_detail/year=YYYY/month=MM 구조의 Parquet 파일을 자동으로 찾아
 AWS RDS PostgreSQL chajoo_dist 테이블에 적재
 """
 import argparse
@@ -21,12 +21,12 @@ from data_pipeline.load.parquet_loader import (
 )
 from data_pipeline.load.chajoo_dist.upload_to_local_db import CHAJU_CONFIG
 
-DEFAULT_DIR = "data/gold/chajoo_dist"
+DEFAULT_DIR = "data/gold/chajoo_detail"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="차주 데이터 Parquet → AWS RDS PostgreSQL 적재",
+        description="차주 Hotspot 데이터 Parquet → AWS RDS PostgreSQL 적재",
     )
     parser.add_argument("--local-dir", default=DEFAULT_DIR, help="데이터 루트 디렉토리")
     parser.add_argument("--rds-sslmode", default="require", help="RDS SSL 모드")

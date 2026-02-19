@@ -19,7 +19,7 @@ if config.config_file_name is not None:
 # 모든 ORM 모델 Import 
 from api.models.base import Base  
 import api.models.restaurant  
-import api.models.chaju  
+import api.models.chajoo  
 import api.models.truckhelper 
 
 target_metadata = Base.metadata

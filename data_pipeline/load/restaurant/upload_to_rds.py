@@ -2,18 +2,8 @@
 Restaurant → AWS RDS PostgreSQL 적재
 ==========================================
 
-data/output/gold_stage/restaurant 에서 최신 연도/월 폴더를 자동으로 찾아
+data/gold/restaurant_master 에서 최신 연도/월 폴더를 자동으로 찾아
 하위 Parquet 파일들을 AWS RDS PostgreSQL에 적재
-
-restaurant_master 적재 후, 신규 (업체명, 도로명주소) 건을
-restaurant_status 테이블에도 자동으로 INSERT
-
-사전 조건:
-    - .env에 RDS_HOST, RDS_DB, RDS_USER, RDS_PASSWORD 설정 필요
-
-사용:
-    python load/restaurant/upload_to_rds.py
-    python load/restaurant/upload_to_rds.py --dry-run
 """
 import argparse
 import sys
@@ -32,11 +22,10 @@ from data_pipeline.load.parquet_loader import (
     read_parquet_rows,
 )
 from data_pipeline.load.restaurant.upload_to_local_db import (
-    RESTAURANT_CONFIG,
-    sync_restaurant_status,
+    RESTAURANT_CONFIG
 )
 
-DEFAULT_DIR = "data/output/gold_stage/restaurant"
+DEFAULT_DIR = "data/gold/restaurant_master"
 
 
 def parse_args() -> argparse.Namespace:
@@ -92,8 +81,6 @@ def main() -> None:
     inserted = insert_rows(engine, all_rows, snapshot=snapshot, config=RESTAURANT_CONFIG, batch_size=args.batch_size)
     print(f"[DONE] {RESTAURANT_CONFIG.table_name}에 {inserted}건 적재 완료")
 
-    # 4) restaurant_status 신규 건 연동
-    sync_restaurant_status(engine, all_rows)
     engine.dispose()
 
 

@@ -1,9 +1,9 @@
 """
-차주 데이터 → AWS RDS PostgreSQL 적재
-======================================
+차주 z-score 데이터 → 로컬 Docker PostgreSQL 적재
+==========================================
 
-data/gold/chajoo_dist/year=YYYY/month=MM 구조의 Parquet 파일을 자동으로 찾아
-AWS RDS PostgreSQL chajoo_dist 테이블에 적재
+data/gold/chajoo_detail/year=YYYY/month=MM 구조의 Parquet 파일을 자동으로 찾아
+로컬 PostgreSQL 테이블에 적재
 """
 import argparse
 import sys
@@ -13,23 +13,31 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from api.models.chajoo import ChajooHotspot
 from api.session import create_engine_for_mode
 from data_pipeline.load.parquet_loader import (
+    TableConfig,
     find_latest_year_month,
     insert_rows,
     read_parquet_rows,
 )
-from data_pipeline.load.chajoo_dist.upload_to_local_db import CHAJU_CONFIG
 
-DEFAULT_DIR = "data/gold/chajoo_dist"
+DEFAULT_DIR = "data/gold/chajoo_detail"
+
+CHAJU_CONFIG = TableConfig(
+    model=ChajooHotspot,
+    column_aliases={},
+    float_columns=frozenset(),
+    auto_columns=frozenset({"id"}),
+    snapshot_keys=(),
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="차주 데이터 Parquet → AWS RDS PostgreSQL 적재",
+        description="차주 Hotspot Parquet → 로컬 Docker PostgreSQL 적재",
     )
     parser.add_argument("--local-dir", default=DEFAULT_DIR, help="데이터 루트 디렉토리")
-    parser.add_argument("--rds-sslmode", default="require", help="RDS SSL 모드")
     parser.add_argument("--batch-size", type=int, default=2000, help="배치 INSERT 크기")
     parser.add_argument("--dry-run", action="store_true", help="실제 적재 없이 계획만 출력")
     return parser.parse_args()
@@ -58,9 +66,9 @@ def main() -> None:
             print(f"  [DRY-RUN] {fp}")
         return
 
-    # 3) RDS 연결 및 적재
+    # 3) DB 연결 및 적재
     snapshot = {"year": year, "month": month}
-    engine = create_engine_for_mode(mode="aws", rds_sslmode=args.rds_sslmode)
+    engine = create_engine_for_mode(mode="local")
 
     all_rows: list[dict] = []
     for fp in parquet_files:

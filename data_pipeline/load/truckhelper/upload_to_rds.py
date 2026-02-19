@@ -2,16 +2,8 @@
 트럭헬퍼 차고지 → AWS RDS PostgreSQL 적재
 ==============================================
 
-data/output/gold_stage/truckhelper/year=YYYY/month=MM 구조의 Parquet 파일을 자동으로 찾아
+data/gold/truckhelper_parking_area/year=YYYY/month=MM 구조의 Parquet 파일을 자동으로 찾아
 AWS RDS PostgreSQL truckhelper_parking_area 테이블에 적재합니다.
-
-사전 조건:
-    - .env에 RDS_HOST, RDS_DB, RDS_USER, RDS_PASSWORD 설정 필요
-
-사용:
-    python load/truckhelper/upload_to_rds.py
-    python load/truckhelper/upload_to_rds.py --rds-sslmode require
-    python load/truckhelper/upload_to_rds.py --dry-run
 """
 import argparse
 import sys
@@ -29,7 +21,7 @@ from data_pipeline.load.parquet_loader import (
 )
 from data_pipeline.load.truckhelper.upload_to_local_db import TRUCKHELPER_CONFIG
 
-DEFAULT_DIR = "data/output/gold_stage/truckhelper"
+DEFAULT_DIR = "data/gold/truckhelper_parking_area"
 
 
 def parse_args() -> argparse.Namespace:
