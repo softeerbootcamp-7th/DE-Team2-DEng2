@@ -2,7 +2,7 @@ import pandas as pd
 import geopandas as gpd
 import pydeck as pdk
 import streamlit as st
-from core.query import load_restaurants, update_restaurant_status, load_zscore_hotspots
+from core.query import load_restaurants, update_restaurant_status, load_zscore_hotspots, save_report
 
 # ------------------------------------------------------------------------------
 # 지도 렌더링 함수
@@ -129,6 +129,10 @@ def render_restaurant_map(selected_sigungu, selected_shp_cd, selected_statuses,
                     <b>🤝 상태:</b>{x['contract_status_display']}<br/>
                     <hr style="margin:5px 0; border-style:dashed; border-color:#444;">
                     <b>📝 비고:</b> <i style="color:#ddd;">{x['remarks_display']}</i>
+                    <a href="https://your-report-form.com?name={x['업체명']}" target="_blank" 
+                        style="color: #ff4b4b; text-decoration: none; font-weight: bold;">
+                        🚩 신고 페이지로 이동
+                    </a>
                 </div>
             </div>
         """, axis=1)
@@ -172,7 +176,7 @@ def render_restaurant_map(selected_sigungu, selected_shp_cd, selected_statuses,
                 "color": "white",
                 "borderRadius": "5px"
             }
-        }
+        },
     ))
 
     with st.expander("📍 식당 및 거점 분석 가이드", expanded=True):
@@ -220,7 +224,7 @@ def render_restaurant_map(selected_sigungu, selected_shp_cd, selected_statuses,
 # 4. 데이터 에디터 섹션
 # ------------------------------------------------------------------------------
 def render_restaurant_editor(filtered_df):
-    """하단 데이터 수정 에디터 및 일괄 업데이트 기능을 제공합니다."""
+    """하단 데이터 수정 에디터 및 신고 기능을 제공합니다."""
 
     if "save_msg" in st.session_state:
         st.success(st.session_state.save_msg)
@@ -230,10 +234,16 @@ def render_restaurant_editor(filtered_df):
         st.info("조건에 맞는 식당이 없습니다. 필터를 통해 식당을 검색해주세요.")
         return
 
+    # --- [중요] 신고 체크박스 컬럼 임시 추가 ---
+    # 기본값은 False로 설정합니다.
+    display_df = filtered_df.copy()
+    display_df["신고"] = False 
+
     with st.form("batch_update_form"):
         edited_df = st.data_editor(
-            filtered_df,
-            column_order=("업체명", "도로명주소", "유휴부지면적", "신뢰도점수", "large_vehicle_access", "contract_status", "remarks"),
+            display_df,
+            # 컬럼 순서에 "신고" 추가
+            column_order=("업체명", "도로명주소", "유휴부지면적", "신뢰도점수", "large_vehicle_access", "contract_status", "remarks", "신고"),
             column_config={
                 "업체명": st.column_config.Column("상호명", disabled=True),
                 "도로명주소": st.column_config.Column("주소", disabled=True),
@@ -241,35 +251,47 @@ def render_restaurant_editor(filtered_df):
                 "신뢰도점수": st.column_config.Column("신뢰도", disabled=True),
                 "large_vehicle_access": st.column_config.SelectboxColumn("🚚 접근성", options=[1, 2, 3, 4, 5]),
                 "contract_status": st.column_config.SelectboxColumn("🤝 상태", options=["미입력", "후보 식당", "계약 성공", "계약 실패"]),
-                "remarks": st.column_config.TextColumn("📝 비고")
+                "remarks": st.column_config.TextColumn("📝 비고"),
+                "신고": st.column_config.CheckboxColumn("🚩 신고", default=False)
             },
             hide_index=True, width="stretch", key="editor_inside_form"
         )
 
-        submit_btn = st.form_submit_button("💾 모든 변경사항 DB 반영", width='stretch')
+        submit_btn = st.form_submit_button("💾 변경사항 반영 및 신고 접수", use_container_width=True)
 
         if submit_btn:
             editor_state = st.session_state.editor_inside_form
             edited_rows = editor_state.get("edited_rows", {})
 
             if not edited_rows:
-                st.warning("변경사항이 없습니다. 수정한 뒤 버튼을 눌러주세요.")
+                st.warning("변경사항이 없습니다.")
             else:
-                with st.spinner("데이터 저장 중..."):
+                with st.spinner("데이터 처리 중..."):
+                    report_count = 0
+                    update_count = 0
+
                     for row_idx, changes in edited_rows.items():
-                        target_row = filtered_df.iloc[int(row_idx)]
+                        target_row = display_df.iloc[int(row_idx)]
 
-                        # 데이터 정규화 및 업데이트
-                        raw_access = changes.get("large_vehicle_access", target_row["large_vehicle_access"])
-                        new_access = None if pd.isna(raw_access) else int(raw_access)
+                        # 1. 신고 처리 (체크박스가 True로 변한 경우)
+                        if changes.get("신고") is True:
+                            save_report(target_row["업체명"], target_row["도로명주소"])
+                            report_count += 1
 
+                        # 2. 기존 정보 업데이트 (상태나 비고가 수정된 경우)
+                        # 신고만 한 경우에도 기본 업데이트 로직이 돌아가도록 구성
                         update_restaurant_status(
                             name=target_row["업체명"],
                             address=target_row["도로명주소"],
-                            access=new_access,
+                            access=changes.get("large_vehicle_access", target_row.get("large_vehicle_access")),
                             status=changes.get("contract_status", target_row["contract_status"]),
                             remarks=changes.get("remarks", target_row.get("remarks", ""))
                         )
+                        update_count += 1
 
-                st.session_state.save_msg = f"✅ 총 {len(edited_rows)}건의 변경사항이 성공적으로 반영되었습니다!"
+                msg = f"✅ {update_count}건 업데이트 완료"
+                if report_count > 0:
+                    msg += f" (🚩 {report_count}건 신고 접수)"
+
+                st.session_state.save_msg = msg
                 st.rerun()

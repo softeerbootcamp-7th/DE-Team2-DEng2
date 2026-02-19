@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+from datetime import datetime
 from sqlalchemy import text
 from core.db import get_engine
 
@@ -35,7 +36,7 @@ def load_chajoo_data():
     """
 
     df = pd.read_sql(query, engine, params=(latest_year, latest_month))
-    print(f"✅ 최신 데이터 로드 완료: {latest_year}년 {latest_month}월 (rows: {len(df):,})")
+
 
     # 데이터프레임과 함께 사용된 날짜 정보를 튜플로 반환
     return df, latest_year, latest_month
@@ -54,9 +55,15 @@ def load_restaurants():
     SELECT m.*, s.large_vehicle_access, s.contract_status, s.remarks
     FROM restaurant_master m
     CROSS JOIN latest_date ld
-    LEFT JOIN restaurant_status s ON m."업체명" = s."업체명" AND m."도로명주소" = s."도로명주소"
+    LEFT JOIN restaurant_status s 
+        ON m."업체명" = s."업체명" AND m."도로명주소" = s."도로명주소"
+    -- 신고 테이블과 LEFT JOIN
+    LEFT JOIN report_history r
+        ON m."업체명" = r."업체명" AND m."도로명주소" = r."도로명주소"
     WHERE m.year = ld.year AND m.month = ld.month
       AND m.longitude IS NOT NULL AND m.latitude IS NOT NULL
+      -- 신고 테이블(r)에 매칭되는 데이터가 없는 경우만 선택
+      AND r."업체명" IS NULL
     """
     return pd.read_sql(query, get_engine())
 
@@ -88,3 +95,31 @@ def load_zscore_hotspots(selected_shp_cd):
         WHERE sigungu_cd = '{selected_shp_cd}'
     """
     return pd.read_sql(query, engine)
+
+def save_report(company_name, road_address):
+    """
+    업체명과 도로명주소를 받아 report_history 테이블에 저장합니다.
+    """
+    engine = get_engine()
+
+    # 1. SQL 쿼리 작성 (복합키 충돌 시 신고일자만 업데이트하거나 무시)
+    # :name, :address 등은 SQL Injection 방지를 위한 파라미터 바인딩 방식입니다.
+    query = text("""
+        INSERT INTO report_history (업체명, 도로명주소, 신고일자)
+        VALUES (:name, :address, :report_date)
+        ON CONFLICT (업체명, 도로명주소)
+        DO UPDATE SET 신고일자 = EXCLUDED.신고일자;
+    """)
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(query, {
+                "name": company_name,
+                "address": road_address,
+                "report_date": datetime.now().date()
+            })
+        print(f"신고 완료: {company_name}")
+        return True
+    except Exception as e:
+        print(f"신고 저장 중 오류 발생: {e}")
+        return False
