@@ -67,7 +67,7 @@ def find_latest_year_month(root: Path) -> tuple[str, str]:
     year_dir = root / f"year={year}"
 
     month = _max_partition_value(year_dir, key="month")
-    return str(year), str(month)
+    return str(year), str(month).zfill(2)
 
 
 def _max_partition_value(parent: Path, key: str) -> int:
