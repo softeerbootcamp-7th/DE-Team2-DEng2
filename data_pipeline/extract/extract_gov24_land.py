@@ -103,7 +103,7 @@ def build_full_address(addr: dict) -> str:
 def sanitize_filename(name: str) -> str:
     # 파일명에 못 쓰는 문자 제거
     invalid = r'<>:"/\\|?*'
-    for ch in invalid:앗
+    for ch in invalid:
         name = name.replace(ch, "_")
 
     # 공백 정리
