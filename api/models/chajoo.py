@@ -18,8 +18,8 @@ class ChajooDist(Base):
     year: Mapped[str] = mapped_column(Text)
     month: Mapped[str] = mapped_column(Text)
     SHP_CD: Mapped[Optional[str]] = mapped_column(Text)
-
-    cargo_sales_count: Mapped[Optional[int]] = mapped_column(BigInteger)
+    score: Mapped[Optional[float]] = mapped_column("전략적_중요도", Float)
+    cargo_count: Mapped[Optional[int]] = mapped_column(BigInteger)
 
 
 class ChajooHotspot(Base):
