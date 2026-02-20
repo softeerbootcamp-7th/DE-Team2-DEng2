@@ -43,7 +43,7 @@ class RestaurantStatus(Base):
 
     business_name: Mapped[str] = mapped_column("업체명", Text, nullable=False)
     road_address: Mapped[str] = mapped_column("도로명주소", Text, nullable=False)
-    large_vehicle_access: Mapped[Optional[int]] = mapped_column(Integer)
+    large_vehicle_access: Mapped[Optional[int]] = mapped_column("대형차_접근성", Integer)
     contract_status: Mapped[Optional[str]] = mapped_column(Text, server_default=text("'후보 식당'"))
     remarks: Mapped[Optional[str]] = mapped_column(Text)
     created_at = mapped_column(DateTime, server_default=func.now())
