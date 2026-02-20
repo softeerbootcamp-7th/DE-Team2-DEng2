@@ -175,7 +175,7 @@ def authenticate_aws_session(
     region_name: Optional[str] = None,
     mfa_serial: Optional[str] = None,
     mfa_token_code: Optional[str] = None,
-    mfa_duration_seconds: int = 10800,
+    mfa_duration_seconds: int = 129600,
     prompt_for_mfa: bool = False,
 ):
     """

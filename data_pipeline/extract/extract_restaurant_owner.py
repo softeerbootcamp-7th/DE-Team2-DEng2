@@ -18,7 +18,7 @@ import pandas as pd
 
 load_dotenv()
 
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from data_pipeline.utils.slack_utils import SlackNotifier
 
 
@@ -28,11 +28,11 @@ from data_pipeline.utils.slack_utils import SlackNotifier
 @dataclass
 class Config:
     url: str = "https://www.foodsafetykorea.go.kr/portal/specialinfo/searchInfoCompany.do"
-    headless: bool = False
+    headless: bool = True
     retries: int = 1
     retry_sleep_sec: int = 5
     timeout_ms: int = 30_000
-    project_root: str = "data/restaurant_owner"
+    project_root: str = "data/bronze/restaurant_owner"
     slack_webhook_url: Optional[str] = os.getenv("SLACK_WEBHOOK_URL")
 
     page_delay_min: float = 3.0
@@ -485,7 +485,7 @@ def main():
         if saved > 0:
             start_page = max(start_page, saved + 1)
             logger.info(f"🔄 자동 재개 모드: {saved}페이지까지 완료 → {start_page}페이지부터 시작")
-    
+
     crawl_complete = False
 
     # 크롤링 단계
@@ -530,6 +530,30 @@ def main():
     else:
         logger.error("⚠️ 변환할 CSV 파일이 없어 프로세스를 종료합니다.")
 
+def run_workflow(**kwargs):
+    # 1. UI(conf)에서 값 가져오기 (기본값 설정)
+    conf = kwargs.get('dag_run').conf or {}
+
+    sido = conf.get('sido', '경기도')
+    addr = conf.get('addr', '')
+    start_page = conf.get('start_page', 1)  # 변수명 통일 (Pythonic)
+    end_page = conf.get('end_page', None)    # None이면 전체 크롤링
+    auto_resume = conf.get('auto_resume', True)
+
+    # 2. sys.argv 조작 (main의 argparse가 읽을 수 있도록)
+    import sys
+    sys.argv = [sys.argv[0], "--sido", sido, "--addr", addr]
+
+    # 숫자형 인자들 추가
+    sys.argv.extend(["--start-page", str(start_page)])
+    if end_page:
+        sys.argv.extend(["--end-page", str(end_page)])
+    if auto_resume:
+        sys.argv.append("--auto-resume")
+
+    # 3. 메인 로직 실행
+    print(f"🚀 Airflow에서 전달받은 설정으로 실행: {sys.argv}")
+    main()
 
 if __name__ == "__main__":
     main()
