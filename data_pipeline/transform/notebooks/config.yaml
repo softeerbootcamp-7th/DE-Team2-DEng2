@@ -134,7 +134,7 @@ data_lake:
                   partition: ["region"]
 
                 # 주차장 후보 토지 지주 정보
-                restaurant_land_match:
+                toji_owner_match:
                   paths:
                     parquet: "silver/s2/toji_owner_match"
                   partition: ["region"]
