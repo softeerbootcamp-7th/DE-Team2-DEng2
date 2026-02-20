@@ -28,7 +28,7 @@ def load_chajoo_data():
 
     # 2. 조회된 최신 날짜로 데이터 로드
     query = """
-        SELECT "sido", "sigungu", "SHP_CD" AS shp_cd, "cargo_sales_count" AS value
+        SELECT "sido", "sigungu", "SHP_CD" AS shp_cd, "cargo_count" AS value, "전략적_중요도" AS score
         FROM chajoo_dist
         WHERE "year" = %s
           AND "month" = %s
@@ -47,36 +47,49 @@ def load_parking_data():
     return pd.read_sql(query, get_engine())
 
 @st.cache_data
-def load_restaurants():
-    query = """
+def load_restaurants(target_sigungu: str):
+    search_terms = target_sigungu.split()
+
+    # LIKE 조건을 동적으로 생성
+    like_clauses = []
+    params = {}
+
+    for i, term in enumerate(search_terms):
+        key = f"term_{i}"
+        like_clauses.append(f"m.법정동명 LIKE %({key})s")
+        params[key] = f"%{term}%"
+
+    where_like_sql = " AND ".join(like_clauses)
+
+    query = f"""
     WITH latest_date AS (
-        SELECT year, month FROM restaurant_master ORDER BY year DESC, month DESC LIMIT 1
+        SELECT year, month
+        FROM restaurant
+        ORDER BY year DESC, month DESC
+        LIMIT 1
     )
-    SELECT m.*, s.large_vehicle_access, s.contract_status, s.remarks
-    FROM restaurant_master m
+    SELECT
+        m.*
+    FROM restaurant m
     CROSS JOIN latest_date ld
-    LEFT JOIN restaurant_status s 
-        ON m."업체명" = s."업체명" AND m."도로명주소" = s."도로명주소"
-    -- 신고 테이블과 LEFT JOIN
-    LEFT JOIN report_history r
-        ON m."업체명" = r."업체명" AND m."도로명주소" = r."도로명주소"
-    WHERE m.year = ld.year AND m.month = ld.month
-      AND m.longitude IS NOT NULL AND m.latitude IS NOT NULL
-      -- 신고 테이블(r)에 매칭되는 데이터가 없는 경우만 선택
-      AND r."업체명" IS NULL
+    WHERE
+        m.year = ld.year
+        AND m.month = ld.month
+        AND {where_like_sql}
     """
-    return pd.read_sql(query, get_engine())
+
+    return pd.read_sql(query, get_engine(), params=params)
 
 # --- 업데이트 함수 ---
-def update_restaurant_status(name, address, access, status, remarks):
+def update_restaurant(name, address, access, status, remarks):
     engine = get_engine()
     with engine.begin() as conn:
         query = text("""
-            INSERT INTO restaurant_status ("업체명", "도로명주소", large_vehicle_access, contract_status, remarks)
+            INSERT INTO restaurant ("업체명", "도로명주소", "대형차_접근성", contract_status, remarks)
             VALUES (:name, :address, :access, :status, :remarks)
             ON CONFLICT ("업체명", "도로명주소")
             DO UPDATE SET
-                large_vehicle_access = EXCLUDED.large_vehicle_access,
+                "대형차_접근성" = EXCLUDED."대형차_접근성",
                 contract_status = EXCLUDED.contract_status,
                 remarks = EXCLUDED.remarks,
                 updated_at = CURRENT_TIMESTAMP
@@ -95,31 +108,3 @@ def load_zscore_hotspots(selected_shp_cd):
         WHERE sigungu_cd = '{selected_shp_cd}'
     """
     return pd.read_sql(query, engine)
-
-def save_report(company_name, road_address):
-    """
-    업체명과 도로명주소를 받아 report_history 테이블에 저장합니다.
-    """
-    engine = get_engine()
-
-    # 1. SQL 쿼리 작성 (복합키 충돌 시 신고일자만 업데이트하거나 무시)
-    # :name, :address 등은 SQL Injection 방지를 위한 파라미터 바인딩 방식입니다.
-    query = text("""
-        INSERT INTO report_history (업체명, 도로명주소, 신고일자)
-        VALUES (:name, :address, :report_date)
-        ON CONFLICT (업체명, 도로명주소)
-        DO UPDATE SET 신고일자 = EXCLUDED.신고일자;
-    """)
-
-    try:
-        with engine.begin() as conn:
-            conn.execute(query, {
-                "name": company_name,
-                "address": road_address,
-                "report_date": datetime.now().date()
-            })
-        print(f"신고 완료: {company_name}")
-        return True
-    except Exception as e:
-        print(f"신고 저장 중 오류 발생: {e}")
-        return False
