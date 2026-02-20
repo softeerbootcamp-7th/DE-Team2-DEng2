@@ -543,7 +543,7 @@ def convert_xlsx_to_parquet(
     # 공백 제거 및 계 행 제거
     df["sido"] = df["sido"].astype(str).str.strip()
     df["sigungu"] = df["sigungu"].astype(str).str.strip()
-    df = df[~df["sigungu"].str.contains("계|합계")].copy()
+    df = df[~df["sigungu"].isin(["계", "합계"])].copy()
     
     # 숫자 변환
     df["cargo_count"] = pd.to_numeric(df["cargo_count"].astype(str).str.replace(",", ""), errors="coerce").fillna(0)
@@ -572,6 +572,17 @@ def convert_xlsx_to_parquet(
 
     # 3) 최종 점수 산출 (가중치 0.6 : 0.4)
     df["전략적_중요도"] = (0.6 * df["sido_zscore"]) + (0.4 * df["sig_zscore"])
+
+
+    # 예외처리
+    # 1. (경기, 부천시) 및 (경북, 군위군), (충북, 청원군) 행 제거
+    # ~ 기호는 조건을 반전(not)시킵니다.
+    df = df[~(
+        ((df['sido'] == '경기') & (df['sigungu'] == '부천시')) | 
+        ((df['sido'] == '경북') & (df['sigungu'] == '군위군')) |
+        ((df['sido'] == '충북') & (df['sigungu'] == '청원군'))
+    )].copy()
+
 
     # --- 4. 시군구 코드 매핑 (SHP_CD) ---
     mapping_df = pd.read_csv(cfg.sigungu_mapping_csv, dtype={'SHP_CD': str})
