@@ -27,9 +27,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # slack_utils.py를 찾기 위해 상위 경로 추가
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 try:
-    from slack_utils import SlackNotifier
+    from data_pipeline.utils.slack_utils import SlackNotifier
 except ImportError:
     # 파일이 없을 경우를 대비한 Mock 클래스
     class SlackNotifier:
@@ -59,9 +59,9 @@ SIDO_NAME_MAP = {v: k for k, v in SIDO_CODE.items()}
 class Config:
     ds_id: str = "12"
     cookie_path: str = "data_pipeline/extract/secrets/vworld_cookies.json"
-    headless: bool = False
-    work_dir: str = "data/tojiSoyuJeongbo/_work"
-    out_dir: str = "data/tojiSoyuJeongbo/parquet"
+    headless: bool = True
+    work_dir: str = "data/bronze/tojiSoyuJeongbo/_work"
+    out_dir: str = "data/bronze/tojiSoyuJeongbo/parquet"
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     format_select: str = "CSV"
@@ -159,7 +159,7 @@ def get_driver(cfg: Config, download_dir: Path) -> webdriver.Chrome:
 def load_cookies(driver: webdriver.Chrome, cfg: Config) -> None:
     if not Path(cfg.cookie_path).exists():
         raise FileNotFoundError(f"쿠키 파일이 없습니다: {cfg.cookie_path}")
-    
+
     cookies = json.loads(Path(cfg.cookie_path).read_text(encoding="utf-8"))
     for attempt in range(1, cfg.retries + 1):
         driver.get("https://www.vworld.kr/")
@@ -237,25 +237,27 @@ def has_any_parquet(out_dir: Path, y: str, m: str) -> bool:
 # Main Execution Logic
 # =========================================================
 
-def run(cfg: Config, logger: logging.Logger) -> None:
+def run(cfg: Config, logger: logging.Logger, start_date: str, end_date: str, base_work_dir: Path) -> None:
     notifier = SlackNotifier(cfg.slack_webhook_url, "EXTRACT-토지소유정보", logger)
-    start_date, end_date = (cfg.start_date, cfg.end_date) if cfg.start_date else previous_month_range()
     y, m = start_date.split("-")[:2]
 
-    work_dir = Path(cfg.work_dir)
-    zip_dir = work_dir / "per_row_zips" / f"{start_date}_to_{end_date}"
-    unzip_dir = work_dir / "unzipped" / f"{start_date}_to_{end_date}"
+    # 하위 디렉토리 설정
+    zip_dir = base_work_dir / "per_row_zips"
+    unzip_dir = base_work_dir / "unzipped"
+
+    zip_dir.mkdir(parents=True, exist_ok=True)
+    unzip_dir.mkdir(parents=True, exist_ok=True)
+
+    # 폴더 생성 (parents=True로 상위 연/월 폴더까지 한 번에 생성)
     zip_dir.mkdir(parents=True, exist_ok=True)
     unzip_dir.mkdir(parents=True, exist_ok=True)
 
     driver = None
     success_count = 0
-    is_skipped = False
-
 
     try:
         # [START]
-        notifier.info("작업 시작", f"수집 기간: {start_date} ~ {end_date}")
+        notifier.info("작업 시작", f"{y}년 {m}월 데이터 추출 시작")
 
         # 1️⃣ ZIP 다운로드 단계
         if has_any_zip(zip_dir):
@@ -287,7 +289,8 @@ def run(cfg: Config, logger: logging.Logger) -> None:
 
         # 3️⃣ PARQUET 변환 단계
         if has_any_parquet(Path(cfg.out_dir), y, m):
-            logger.warning(f"⏭ {y}-{m} Parquet 결과가 이미 존재하여 변환을 건너뜁니다.")
+            logger.info(f"Skipped: {y}년 {m}월 데이터가 이미 존재합니다")
+            notifier.info("작업 완료", f"Skipped: {y}년 {m}월 데이터가 이미 존재합니다")
         else:
             csv_files = list(unzip_dir.rglob("*.csv"))
             logger.info(f"📦 CSV -> Parquet 변환 시작 (총 {len(csv_files)}개)")
@@ -312,8 +315,8 @@ def run(cfg: Config, logger: logging.Logger) -> None:
 
             logger.info(f"✅ 변환 공정 종료 (성공: {success_count}/{len(csv_files)})")
 
-        # [SUCCESS]
-        notifier.success("작업 완료", f"{y}년 {m}월 데이터 적재에 성공했습니다. (성공: {success_count}건)")
+            # [SUCCESS]
+            notifier.success("작업 완료", f"{y}년 {m}월 데이터 추출 완료 (성공: {success_count}건)")
 
     except Exception as e:
         # [CRITICAL ERROR]
@@ -328,9 +331,21 @@ def run(cfg: Config, logger: logging.Logger) -> None:
 
 def main():
     cfg = Config()
-    logger = build_logger(Path(cfg.work_dir))
-    logger.info("🚀 파이프라인 가동")
-    run(cfg, logger)
+    
+    # 1. 날짜 결정 (Config에 있으면 쓰고, 없으면 지난달)
+    start_date, end_date = (cfg.start_date, cfg.end_date) if cfg.start_date else previous_month_range()
+    y, m = start_date.split("-")[:2]
+
+    # 2. 로그 및 작업 경로 설정: _work/year=YYYY/month=MM/
+    base_work_dir = Path(cfg.work_dir) / f"year={y}" / f"month={m}"
+    base_work_dir.mkdir(parents=True, exist_ok=True) # 로그를 남기기 위해 폴더 먼저 생성
+
+    # 3. 로거 빌드 (해당 경로 안에 run.log 생성)
+    logger = build_logger(base_work_dir)
+    logger.info(f"🚀 파이프라인 가동 (대상 기간: {start_date} ~ {end_date})")
+
+    # 4. 실행 (결정된 경로들을 run 함수에 전달)
+    run(cfg, logger, start_date, end_date, base_work_dir)
 
 if __name__ == "__main__":
     main()

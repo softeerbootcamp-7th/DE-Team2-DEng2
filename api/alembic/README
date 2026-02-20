@@ -1,0 +1,21 @@
+## Alembic
+
+### examples
+
+#### 현재 DB 상태 확인
+alembic current
+
+#### 마이그레이션 파일 자동 생성
+alembic revision --autogenerate -m "init"
+
+#### 최신 마이그레이션까지 적용
+alembic upgrade head
+
+#### 한 단계 되돌리기
+alembic downgrade -1
+
+#### AWS RDS에 적용
+ALEMBIC_DB_MODE=aws alembic upgrade head
+
+#### SQL만 미리보기 (실제 적용 안 함)
+alembic upgrade head --sql

@@ -1,7 +1,0 @@
-logs
-data
-spark-events
-
-venv
-.venv
-.DS_Store
