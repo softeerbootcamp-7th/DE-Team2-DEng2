@@ -133,10 +133,10 @@ data_lake:
                     parquet: "silver/s2/ownership_inference"
                   partition: ["region"]
 
-                # 음식점과 지주가 같은 토지 리스트
+                # 주차장 후보 토지 지주 정보
                 restaurant_land_match:
                   paths:
-                    parquet: "silver/s2/restaurant_land_match"
+                    parquet: "silver/s2/toji_owner_match"
                   partition: ["region"]
         
         
