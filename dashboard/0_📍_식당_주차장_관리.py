@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 
 from core.settings import SHP_PATH
 from core.query import load_restaurants
-from core.query import load_chajoo_data
 from restaurant_map import render_restaurant_editor, render_restaurant_map, render_restaurant_grid
 
 # ------------------------------------------------------------------------------
@@ -44,13 +43,12 @@ def main():
     st.title("🚀 식당 주차장 야간 화물 차고지")
 
     gdf_shp = load_shp()
-    df_chajoo, _, _ = load_chajoo_data()
 
     # SHP 코드 미리 추출
-    matching_row = df_chajoo[
-        (df_chajoo["sido"] + " " + df_chajoo["sigungu"]) == TARGET_SIGUNGU
+    matching_row = gdf_shp[
+        (gdf_shp["sido"] + " " + gdf_shp["SIGUNGU_NM"]) == TARGET_SIGUNGU
     ]
-    selected_shp_cd = matching_row["shp_cd"].iloc[0] if not matching_row.empty else None
+    selected_shp_cd = matching_row["SIGUNGU_CD"].iloc[0] if not matching_row.empty else None
 
     # ------------------------------------------------------------------------------
     # 데이터 로드 우선 실행

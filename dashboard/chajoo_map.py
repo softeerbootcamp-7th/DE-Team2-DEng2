@@ -33,7 +33,12 @@ def prepare_chajoo_data(gdf):
 
     # 병합 및 최적화
     df_chajoo["shp_cd"] = df_chajoo["shp_cd"].astype(str)
-    merged = gdf.merge(df_chajoo, left_on="SIGUNGU_CD", right_on="shp_cd", how="inner")
+    merged = gdf.merge(
+        df_chajoo.drop(columns=['sido']), 
+        left_on="SIGUNGU_CD", 
+        right_on="shp_cd", 
+        how="inner"
+    )
     merged["geometry"] = merged["geometry"].simplify(tolerance=0.01, preserve_topology=True)
 
     # 공영 주차장 데이터
