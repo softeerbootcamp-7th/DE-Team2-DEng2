@@ -103,7 +103,7 @@ def build_full_address(addr: dict) -> str:
 def sanitize_filename(name: str) -> str:
     # 파일명에 못 쓰는 문자 제거
     invalid = r'<>:"/\\|?*'
-    for ch in invalid:앗
+    for ch in invalid:
         name = name.replace(ch, "_")
 
     # 공백 정리
@@ -455,7 +455,7 @@ def fill_form(driver, address):
 # ============================================================
 
 def get_pdf(driver):
-    wait = WebDriverWait(driver, WAIT_SHORT)
+    wait = WebDriverWait(driver, WAIT_NORMAL)
 
     # 첫 번째 "문서출력" 버튼 클릭
     try:

@@ -1,0 +1,95 @@
+data_lake:
+  root: "/opt/spark/data"
+
+  layers:
+    bronze:
+      description: "원천 수집/적재 (zip/pdf/work 포함) + parquet 적재"
+      domains:
+        address:
+          description: "도로명주소 원천"
+          paths:
+            work: "bronze/address/_work"
+            parquet: "bronze/address/parquet"
+          partition: ["year", "month", "region"]
+
+        buildingLeader:
+          description: "건축물대장(리더) 원천"
+          paths:
+            work: "bronze/buildingLeader/_work"
+            parquet: "bronze/buildingLeader/parquet"
+          partition: ["year", "month", "region"]
+
+        coord:
+          description: "위치정보 요약DB"
+          paths:
+            work: "bronze/coord/_work"
+            parquet: "bronze/coord/parquet"
+          partition: ["year", "month", "region"]
+
+        restaurant_owner:
+          description: "음식점(사업자/대표 등) 원천"
+          paths:
+            work: "bronze/restaurant_owner/_work"
+            parquet: "bronze/restaurant_owner/parquet"
+          partition: ["year", "month", "region"]
+
+        tojidaejang:
+          description: "토지대장 PDF 수집"
+          paths:
+            work: "bronze/tojidaejang/_work"
+            pdf: "bronze/tojidaejang/_work/pdf"
+            logs: "bronze/tojidaejang/_work/logs"
+          partition: ["region"]
+
+        tojiSoyuJeongbo:
+          description: "토지소유정보 원천"
+          paths:
+            work: "bronze/tojiSoyuJeongbo/_work"
+            parquet: "bronze/tojiSoyuJeongbo/parquet"
+          partition: ["year", "month", "region"]
+
+    silver:
+      description: "정제/병합 단계"
+      stages:
+        s0:
+          description: "address + coord 최신 merge, toji/building 기본 정제"
+          domains:
+            address:
+              paths:
+                parquet: "silver/s0/address"
+              partition: ["region", "sigungu"]
+
+            toji_building:
+              paths:
+                parquet: "silver/s0/toji_building"
+              partition: ["region", "sigungu"]
+
+        s1:
+          description: "후보 토지 리스트/크롤링 대상 리스트 생성"
+          domains:
+            crawling_list:
+              paths:
+                parquet: "silver/s1/crawling_list"
+              partition: ["region", "sigungu"]
+
+            toji_list:
+              paths:
+                parquet: "silver/s1/toji_list"
+              partition: ["region", "sigungu"]
+
+        s2:
+          description: "지주(토지소유자) 정보 결합/추론 결과"
+          domains:
+            jiju_jeongbo:
+              paths:
+                parquet: "silver/s2/jiju_jeongbo"
+              partition: ["region", "sigungu"]
+
+    gold:
+      description: "최종 서빙/마스터 테이블"
+      domains:
+        restaurant_master:
+          description: "최종 음식점 마스터(토지/건축/지주/유휴부지 등 종합)"
+          paths:
+            parquet: "gold/restaurant_master"
+          partition: ["region", "sigungu"]

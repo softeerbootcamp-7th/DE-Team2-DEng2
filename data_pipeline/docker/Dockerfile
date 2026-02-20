@@ -47,7 +47,8 @@ RUN uv pip install --system --no-cache-dir \
     jupyterlab \
     matplotlib \
     seaborn \
-    python-dotenv
+    python-dotenv \
+    pyproj
 
 ENV PYSPARK_PYTHON=python3
 ENV PYSPARK_DRIVER_PYTHON=python3
