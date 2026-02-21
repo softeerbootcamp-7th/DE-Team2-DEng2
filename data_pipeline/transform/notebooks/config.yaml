@@ -51,7 +51,7 @@ data_lake:
         
             # 식당+대표자(소재지 포함) 원천
             restaurant_owner:
-              refresh_cycle: "monthly"
+              refresh_cycle: "weekly"
               paths:
                 parquet: "bronze/restaurant_owner/parquet"
         
@@ -122,8 +122,14 @@ data_lake:
               description: "후보 리스트 생성 / 분석 준비"
         
               domains:
+
+                # 음식점 위도/경도 (Data Product 2 - Input: 음식점, Output: 위도/경도)
+                restaurant_coord:
+                  paths:
+                    parquet: "silver/s1/restaurant_coord"
+                  partition: ["region"] 
         
-                # 주차장 후보 토지 리스트 (Data Product 2 - Input: 토지 리스트, Output: 주차장으로 쓸 수 있는 토지 리스트)
+                # 주차장 후보 토지 리스트 (Data Product 3 - Input: 토지 리스트, Output: 주차장으로 쓸 수 있는 토지 리스트)
                 toji_list:
                   paths:
                     parquet: "silver/s1/toji_list"
@@ -147,7 +153,7 @@ data_lake:
                     parquet: "silver/s2/ownership_inference"
                   partition: ["region"]
 
-                # 주차장 후보 토지 지주 정보 (Data Product 3 - Input: 주차장 후보 토지 리스트, Output: 주차장으로 쓸 수 있는 토지의 지주)
+                # 주차장 후보 토지 지주 정보 (Data Product 4 - Input: 주차장 후보 토지 리스트, Output: 주차장으로 쓸 수 있는 토지의 지주)
                 toji_owner_match:
                   paths:
                     parquet: "silver/s2/toji_owner_match"
