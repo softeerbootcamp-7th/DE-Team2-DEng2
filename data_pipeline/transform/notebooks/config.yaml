@@ -168,8 +168,8 @@ data_lake:
         
           domains:
         
-            restaurant_master:
+            restaurant:
               description: "최종 음식점 마스터(토지/건축/지주/유휴부지 등 종합)"
               paths:
-                parquet: "gold/restaurant_master"
+                parquet: "gold/restaurant"
               partition: ["region"]
