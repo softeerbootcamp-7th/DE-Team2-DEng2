@@ -50,7 +50,6 @@ def prepare_chajoo_data(gdf):
 # 1. 그리드 렌더링 함수
 # ------------------------------------------------------------------------------
 def render_chajoo_grid(merged_df):
-    st.subheader("📊 지역별 수요 순위")
 
     if merged_df is None or merged_df.empty:
         st.info("데이터가 없습니다.")
@@ -103,10 +102,12 @@ def render_chajoo_grid(merged_df):
             row = selected.iloc[0]
             idx = row["_idx"]
 
+            st.session_state["target_sigungu"] = f"{row["시도"]} {row["시군구"]}"
+
+
             # 폴리곤의 중심점(Centroid) 계산하여 좌표 추출
             target_geom = merged_df.loc[idx, "geometry"]
             centroid = target_geom.centroid
-
             new_view = (centroid.y, centroid.x) # (lat, lon)
 
             # 세션 상태 업데이트 (지도가 이 좌표를 바라보게 설정)
@@ -117,7 +118,6 @@ def render_chajoo_grid(merged_df):
 # 2. 지도 렌더링 함수
 # ------------------------------------------------------------------------------
 def render_chajoo_map(merged_df, df_parking, mapbox_api_key):
-    st.subheader("📍 전국 밀집도 지표")
 
     # 색상 스케일 계산 (함수 내부에서 처리)
     def get_colors(val, max_v):
@@ -179,6 +179,7 @@ def render_chajoo_map(merged_df, df_parking, mapbox_api_key):
     view_pos = st.session_state.get("chajoo_view", (36.3, 127.8))
     zoom_level = 10 if st.session_state.get("chajoo_view") else 6.2
 
+    use_satellite = st.session_state.get("chajoo_map_satellite", False)
     st.pydeck_chart(pdk.Deck(
             layers=layers,
             initial_view_state=pdk.ViewState(
@@ -187,7 +188,7 @@ def render_chajoo_map(merged_df, df_parking, mapbox_api_key):
                 zoom=zoom_level,
                 pitch=0
             ),
-            map_style="mapbox://styles/mapbox/dark-v11",
+            map_style = "mapbox://styles/mapbox/satellite-streets-v12" if use_satellite else "mapbox://styles/mapbox/dark-v11",
             api_keys={"mapbox": mapbox_api_key},
             tooltip={
                 "html": "{tooltip_html}",  # 양쪽 레이어에 공통으로 존재하는 컬럼명

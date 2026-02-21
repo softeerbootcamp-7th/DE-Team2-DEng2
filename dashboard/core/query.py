@@ -76,6 +76,7 @@ def load_restaurants(target_sigungu: str):
         m.year = ld.year
         AND m.month = ld.month
         AND {where_like_sql}
+    ORDER BY m."유휴부지면적" DESC
     """
 
     return pd.read_sql(query, get_engine(), params=params)
@@ -85,16 +86,28 @@ def update_restaurant(name, address, access, status, remarks):
     engine = get_engine()
     with engine.begin() as conn:
         query = text("""
-            INSERT INTO restaurant ("업체명", "도로명주소", "대형차_접근성", contract_status, remarks)
-            VALUES (:name, :address, :access, :status, :remarks)
-            ON CONFLICT ("업체명", "도로명주소")
-            DO UPDATE SET
-                "대형차_접근성" = EXCLUDED."대형차_접근성",
-                contract_status = EXCLUDED.contract_status,
-                remarks = EXCLUDED.remarks,
-                updated_at = CURRENT_TIMESTAMP
+            UPDATE restaurant
+            SET 
+                "대형차_접근성" = :access,
+                contract_status = :status,
+                remarks = :remarks,
+                viewed_at = CURRENT_TIMESTAMP
+            WHERE "업체명" = :name AND "도로명주소" = :address
         """)
-        conn.execute(query, {"name": name, "address": address, "access": access, "status": status, "remarks": remarks})
+
+        result = conn.execute(query, {
+            "name": name, 
+            "address": address, 
+            "access": access, 
+            "status": status, 
+            "remarks": remarks
+        })
+
+        # (옵션) 업데이트된 행이 없는 경우 로그를 남기거나 예외 처리를 할 수 있습니다.
+        if result.rowcount == 0:
+            print(f"⚠️ 업데이트 대상 없음: {name}")
+
+    # 데이터 수정 후 캐시 클리어 (중요)
     st.cache_data.clear()
 
 def load_zscore_hotspots(selected_shp_cd):
@@ -108,3 +121,40 @@ def load_zscore_hotspots(selected_shp_cd):
         WHERE sigungu_cd = '{selected_shp_cd}'
     """
     return pd.read_sql(query, engine)
+
+
+def get_last_viewed_sigungu():
+    """
+    DB에서 ID 1번에 저장된 마지막 조회 지역명을 가져옵니다.
+    데이터가 없으면 기본값인 '경기도 평택시'를 반환합니다.
+    """
+    engine = get_engine()
+    query = text("SELECT sigungu FROM user_view_history WHERE id = 1")
+
+    try:
+        df = pd.read_sql(query, engine)
+        if not df.empty:
+            return df.iloc[0]['sigungu']
+        return "경기도 평택시"
+    except Exception:
+        # 테이블이 없거나 연결 오류 시 대비
+        return "경기도 평택시"
+
+def save_view_history(sigungu):
+    """
+    ID 1번 행에 현재 조회 중인 지역명을 업데이트(UPSERT)합니다.
+    """
+    engine = get_engine()
+
+    # f-string 대신 파라미터 바인딩(:sigungu)을 사용하는 것이 보안상 더 안전합니다.
+    query = text("""
+        INSERT INTO user_view_history (id, sigungu, viewed_at)
+        VALUES (1, :sigungu, CURRENT_TIMESTAMP)
+        ON CONFLICT (id) DO UPDATE 
+        SET sigungu = EXCLUDED.sigungu,
+            viewed_at = CURRENT_TIMESTAMP;
+    """)
+
+    with engine.begin() as conn:
+        # text() 객체와 함께 파라미터를 딕셔너리 형태로 전달합니다.
+        conn.execute(query, {"sigungu": sigungu})

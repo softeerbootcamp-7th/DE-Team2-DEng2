@@ -33,12 +33,37 @@ def main():
         col_left, col_right = st.columns([6, 4])
 
         with col_left:
+            st.subheader("📊 지역별 수요 순위")
             render_chajoo_grid(merged_df)
 
         with col_right:
+            # 지도 상단 헤더 공간 (제목과 토글 분리)
+            map_header_left, map_header_right = st.columns([7, 3])
+            with map_header_left:
+                st.subheader("📍 전국 밀집도 지표")
+            with map_header_right:
+                # ✅ 고유 key를 부여하여 리런 시에도 상태가 유지되도록 설정
+                use_satellite = st.toggle("🛰️ 위성 지도", value=False, key="chajoo_map_satellite")
+
             render_chajoo_map(merged_df, df_parking, MAPBOX_API_KEY)
-    else:
-        st.error("데이터를 로드하는 중 오류가 발생했습니다.")
+
+        # --- 🚀 메인 분석 페이지 연결 섹션 ---
+        st.divider()
+
+        if "target_sigungu" in st.session_state:
+            target = st.session_state["target_sigungu"]
+
+            # 레이아웃을 중앙으로 잡아 집중도 향상
+            _, center_col, _ = st.columns([1, 2, 1])
+
+            with center_col:
+                # 파일 경로를 정확히 입력해야 합니다 (pages/ 생략 가능)
+                if st.button(f"🚀 {target} 식당 분석 페이지로 이동", width="stretch", type="primary"):
+                    st.switch_page("0_📍_식당_주차장_관리.py")
+
+        else:
+            st.info("💡 왼쪽 표에서 분석을 원하는 지역을 선택해 주세요.")
+
 
 if __name__ == "__main__":
     main()
