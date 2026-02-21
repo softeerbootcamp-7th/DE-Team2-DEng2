@@ -1,0 +1,175 @@
+target:
+    REGION: "경기"
+    SIGUNGU: "평택시"
+
+data_lake:
+
+    # Spark 컨테이너 기준 루트
+    root: "/opt/spark/data"
+    
+    layers:
+
+        # ========================================================
+        # BRONZE (raw parquet landing)
+        # ========================================================
+        bronze:
+          description: "원천(raw) 적재 레이어"
+        
+          domains:
+        
+            # 도로명주소 원천
+            address:
+              refresh_cycle: "monthly"
+              primary_key: "도로명주소관리번호"
+              paths:
+                parquet: "bronze/address/parquet"
+        
+            # 위치(좌표) 원천 (도로명주소-출입구 좌표 등)
+            coord:
+              refresh_cycle: "monthly"
+              primary_key:
+                  - "법정동코드"
+                  - "도로명코드"
+                  - "지하여부"
+                  - "건물본번"
+                  - "건물부번"
+              paths:
+                parquet: "bronze/coord/parquet"
+        
+            # 건축물대장(표제부 등) 원천
+            buildingLeader:
+              refresh_cycle: "monthly"
+              primary_key: "관리_건축물대장_PK"
+              paths:
+                parquet: "bronze/buildingLeader/parquet"
+        
+            # 토지 소유/기본정보 원천
+            tojiSoyuJeongbo:
+              refresh_cycle: "monthly"
+              paths:
+                parquet: "bronze/tojiSoyuJeongbo/parquet"
+        
+            # 식당+대표자(소재지 포함) 원천
+            restaurant_owner:
+              refresh_cycle: "weekly"
+              paths:
+                parquet: "bronze/restaurant_owner/parquet"
+        
+        
+        # ========================================================
+        # SILVER (clean + stage pipeline)
+        # ========================================================
+        silver:
+          description: "정제 및 통합 레이어"
+        
+          # ------------------------------
+          # S_clean (raw → clean 정제)
+          # ------------------------------
+          clean:
+            description: "도메인별 정제 데이터"
+        
+            domains:
+        
+              toji_clean:
+                paths:
+                  parquet: "silver/clean/toji"
+                partition: ["region"]
+        
+              building_clean:
+                paths:
+                  parquet: "silver/clean/building"
+                partition: ["region"]
+        
+              address_clean:
+                primary_key: "도로명주소"
+                paths:
+                  parquet: "silver/clean/address"
+                partition: ["region"]
+        
+              coord_clean:
+                paths:
+                  parquet: "silver/clean/coord"
+                partition: ["region"]
+        
+              restaurant_clean:
+                paths:
+                  parquet: "silver/clean/restaurant"
+                partition: ["region"]
+        
+          # ------------------------------
+          # S0 / S1 / S2 (조인 / 후보 리스트 / 모델 input)
+          # ------------------------------
+          stages:
+        
+            s0:
+              description: "기본 통합 (base integration)"
+        
+              domains:
+
+                # 주소 + 위치 조인 결과 (Data Product 0 - Input: 도로명주소, Output: 위도/경도)
+                address:
+                  paths:
+                    parquet: "silver/s0/address"
+                  partition: ["region"]
+        
+                # 토지 + 건축물 조인 결과 (Data Product 1 - Input: 토지, Output: 건축물 리스트)
+                toji_building:
+                  paths:
+                    parquet: "silver/s0/toji_building"
+                  partition: ["region"]
+        
+            s1:
+              description: "후보 리스트 생성 / 분석 준비"
+        
+              domains:
+
+                # 음식점 위도/경도 (Data Product 2 - Input: 음식점, Output: 위도/경도)
+                restaurant_coord:
+                  paths:
+                    parquet: "silver/s1/restaurant_coord"
+                  partition: ["region"] 
+        
+                # 주차장 후보 토지 리스트 (Data Product 3 - Input: 토지 리스트, Output: 주차장으로 쓸 수 있는 토지 리스트)
+                toji_list:
+                  paths:
+                    parquet: "silver/s1/toji_list"
+                  partition: ["region"]
+    
+                # 토지대장 크롤링 리스트 (Data API 0 - Input: 주차장 토지 리스트, Output: 같은 지주로 묶이는 토지 그룹 리스트)
+                crawling_list:
+                  paths:
+                    parquet: "silver/s1/crawling_list"
+                  partition: ["region"]
+        
+        
+            s2:
+              description: "최종 모델 input"
+        
+              domains:
+
+                # 토지대장에서 파싱한 지주 정보 (Data API 1 - Input: 토지 대장, Output: 추론된 지주)  
+                ownership_inference:
+                  paths:
+                    parquet: "silver/s2/ownership_inference"
+                  partition: ["region"]
+
+                # 주차장 후보 토지 지주 정보 (Data Product 4 - Input: 주차장 후보 토지 리스트, Output: 주차장으로 쓸 수 있는 토지의 지주)
+                toji_owner_match:
+                  paths:
+                    parquet: "silver/s2/toji_owner_match"
+                  partition: ["region"]
+        
+        
+        # ========================================================
+        # GOLD (serving / master)
+        # ========================================================
+        gold:
+          description: "최종 서빙/마스터 테이블"
+        
+          domains:
+        
+            restaurant:
+              description: "최종 음식점 마스터(토지/건축/지주/유휴부지 등 종합)"
+              paths:
+                parquet: "gold/restaurant"
+              partition: ["region"]
