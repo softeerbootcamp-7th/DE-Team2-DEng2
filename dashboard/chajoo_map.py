@@ -7,21 +7,12 @@ import pandas as pd
 
 # 내부 모듈 임포트
 from core.query import load_chajoo_data, load_parking_data
-from core.settings import SHP_PATH
-
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
 
 # 1. 환경 설정 및 페이지 설정
 load_dotenv()
 MAPBOX_API_KEY = os.getenv("MAPBOX_API_KEY")
-
-# ------------------------------------------------------------------------------
-# 데이터 로딩 함수 (캐싱 활용)
-# ------------------------------------------------------------------------------
-@st.cache_resource
-def load_shp():
-    return gpd.read_parquet(SHP_PATH)
 
 # ------------------------------------------------------------------------------
 # 데이터 전처리 함수 (app.py에서 호출하여 각 함수에 전달)
@@ -39,7 +30,7 @@ def prepare_chajoo_data(gdf):
         right_on="shp_cd", 
         how="inner"
     )
-    merged["geometry"] = merged["geometry"].simplify(tolerance=0.01, preserve_topology=True)
+    merged["geometry"] = merged["geometry"].simplify(tolerance=0.02, preserve_topology=True)
 
     # 공영 주차장 데이터
     df_parking = load_parking_data().dropna(subset=["lat", "lon"])
@@ -57,8 +48,12 @@ def render_chajoo_grid(merged_df):
 
     # 1. 데이터 가공 (AgGrid용)
     grid_df = merged_df[["sido", "SIGUNGU_NM", "score"]].copy()
-    grid_df = grid_df.sort_values(by="score", ascending=False)
+    grid_df = grid_df.sort_values(by="score", ascending=False).head(10)
+    # 🥇 순위 컬럼 추가 (1부터 시작)
+    grid_df.insert(0, "순위", range(1, len(grid_df) + 1))
+
     grid_df["_idx"] = grid_df.index  # 원본 index 보관
+
 
     grid_df = grid_df.rename(columns={
         "sido": "시도",
@@ -72,15 +67,50 @@ def render_chajoo_grid(merged_df):
     gb.configure_default_column(editable=False, resizable=True)
     gb.configure_selection(selection_mode="single", use_checkbox=False)
 
+
+    gb.configure_column("순위", width=90, pinned="left", cellStyle={'text-align': 'center'}, filter=False)
     gb.configure_column("시도", width=120, pinned="left")
-    gb.configure_column("시군구", width=150, pinned="left")
-    gb.configure_column("전략적 중요도", width=120, type=["numericColumn", "numberColumnFilter"])
+    gb.configure_column("시군구", width=180, pinned="left")
+    gb.configure_column(
+        "전략적 중요도",
+        width=160,
+        type=["numericColumn", "numberColumnFilter"],
+        valueFormatter="Math.floor(value * 100) / 100",
+        filter=False
+    )
 
-    gb.configure_grid_options(domLayout="normal", rowHeight=45)
+    gb.configure_grid_options(domLayout="normal", rowHeight=57)
 
+    # 🎨 글꼴 크기 대폭 확대 및 볼드체 강조
     custom_css = {
-        ".ag-header-cell-label": {"font-size": "15px", "font-weight": "600"},
-        ".ag-cell": {"font-size": "16px", "display": "flex", "align-items": "center"},
+        # 헤더 글씨 키우기
+        ".ag-header-cell": {
+            "display": "flex",
+            "justify-content": "center",   # 🔥 가로 중앙
+            "align-items": "center",       # 🔥 세로 중앙
+            "text-align": "center",
+        },
+        ".ag-header-cell-label": {
+            "font-size": "20px !important",
+            "font-weight": "800 !important",
+            "justify-content": "center",
+            "width": "100%",
+            "text-align": "center",
+        },
+        # 본문 셀 글씨 키우기
+        ".ag-cell": {
+            "justify-content": "center",
+            "align-items": "center",
+            "font-size": "22px !important", 
+            "font-weight": "500",
+            "display": "flex", 
+            "align-items": "center"
+        },
+        # 선택된 행 강조 (선택 사항)
+        ".ag-row-selected": {
+            "background-color": "#2c3e50 !important",
+            "border": "2px solid #00d4ff !important"
+        }
     }
 
     # 3. AgGrid 렌더링
@@ -88,10 +118,10 @@ def render_chajoo_grid(merged_df):
         grid_df,
         gridOptions=gb.build(),
         update_mode=GridUpdateMode.SELECTION_CHANGED,
-        height=600,
         theme="streamlit",
         key="chajoo_grid_picker",
-        custom_css=custom_css
+        custom_css=custom_css,
+        height=600
     )
 
     # 4. 클릭 이벤트 처리 (지도 이동 로직)

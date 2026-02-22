@@ -1,30 +1,62 @@
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+from st_aggrid import AgGrid, JsCode, GridOptionsBuilder, GridUpdateMode
 from core.query import update_restaurant
 
 def render_restaurant_grid(display_df):
 
+
     GRID_COLUMNS = [
         "업체명",
-        "유휴부지면적",
-        "신뢰도점수",
-        "대형차_접근성",
+        "총점",
+        "수익성",
+        "영업_적합도",
+        "주차_적합도",
         "contract_status",
         "remarks",
     ]
 
-    # ✅ index 보존
     grid_df = display_df[GRID_COLUMNS].copy()
     grid_df["_idx"] = display_df.index  # 원본 index 보관
+    grid_df.insert(0, "순위", range(1, len(grid_df) + 1))
+    grid_df["총점"] = grid_df["총점"].round().astype("Int64")
+
+    def score_to_grade(x):
+        if pd.isna(x):
+            return None
+        if x >= 0.8:
+            return "A"
+        elif x >= 0.6:
+            return "B"
+        elif x >= 0.4:
+            return "C"
+        elif x >= 0.2:
+            return "D"
+        else:
+            return "E"
+
+
+    def parking_to_grade(x):
+        if pd.isna(x):
+            return None
+        mapping = {
+            5: "A",
+            4: "B",
+            3: "C",
+            2: "D",
+            1: "E",
+        }
+        return mapping.get(int(x), None)
+
+    grid_df["영업_적합도"] = grid_df["영업_적합도"].apply(score_to_grade)
+    grid_df["수익성"] = grid_df["수익성"].apply(score_to_grade)
+    grid_df["주차_적합도"] = grid_df["주차_적합도"].apply(parking_to_grade)
 
     grid_df = grid_df.rename(columns={
-        "업체명": "상호명",
-        "유휴부지면적": "주차장 면적",
-        "신뢰도점수": "신뢰도",
-        "대형차_접근성": "대형차 접근성",
-        "contract_status": "계약 상태",
+        "영업_적합도": "영업 적합도",
+        "주차_적합도": "주차 적합도",
+        "contract_status": "진행 상태",
         "remarks": "비고",
     })
 
@@ -35,34 +67,104 @@ def render_restaurant_grid(display_df):
     gb.configure_default_column(editable=False, resizable=True)
     gb.configure_selection(selection_mode="single", use_checkbox=False)
 
-    gb.configure_column("상호명", pinned="left", width=300)
-    gb.configure_column("주차장 면적", pinned="left", width=100)
-    gb.configure_column("신뢰도", pinned="left", width=100)
-    gb.configure_column("대형차 접근성", pinned="left", width=100)
-    gb.configure_column("계약 상태", pinned="left", width=100)
+    gb.configure_column("순위", pinned="left", width=80, filter=False)
+    gb.configure_column("업체명", pinned="left", width=250) 
+    gb.configure_column("총점", pinned="left", width=120, filter=False)
+
+    gb.configure_column("수익성", pinned="left", width=120)
+    gb.configure_column("영업 적합도", pinned="left", width=120)
+    gb.configure_column("주차 적합도", pinned="left", width=120)
+
+    gb.configure_column(
+        "진행 상태",
+        pinned="left",
+        width=130,
+        filter="agSetColumnFilter",
+        cellStyle=JsCode("""
+            function(params) {
+
+                const styles = {
+                    "후보": {
+                        bg: "#2a2a2a",
+                        color: "#cfcfcf"
+                    },
+                    "접촉": {
+                        bg: "#1f2a38",
+                        color: "#90caf9"
+                    },
+                    "관심": {
+                        bg: "#332b1a",
+                        color: "#ffd54f"
+                    },
+                    "협의": {
+                        bg: "#3a2a1a",
+                        color: "#ffb74d"
+                    },
+                    "성공": {
+                        bg: "#1f3326",
+                        color: "#81c784"
+                    },
+                    "실패": {
+                        bg: "#3a1f1f",
+                        color: "#ef9a9a"
+                    }
+                };
+
+                const s = styles[params.value];
+                if (!s) return {};
+
+                return {
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "2px 2px",
+                    borderRadius: "999px",
+                    backgroundColor: s.bg,
+                    color: s.color,
+                    fontWeight: "600",
+                    fontSize: "12px",
+                    lineHeight: "1",
+                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.04)"
+                };
+            }
+        """)
+    )
+
+    # 비고는 보통 길기 때문에 pinned를 빼서 오른쪽에 두거나, 
     gb.configure_column("비고", wrapText=True, autoHeight=True)
 
     gb.configure_grid_options(
         domLayout="normal",
-        rowHeight=42,
+        rowHeight=57,
     )
 
     custom_css = {
         ".ag-root-wrapper": {
-            "font-size": "16px",   # 전체 기본 글씨 크기
-        },
-        ".ag-header-cell-label": {
             "font-size": "16px",
-            "font-weight": "600",
         },
         ".ag-header-cell": {
             "display": "flex",
-            "align-items": "center",   # 헤더도 중앙
+            "justify-content": "center",
+            "align-items": "center",
+            "text-align": "center",
+        },
+        ".ag-header-cell-label": {
+            "font-size": "20px !important",
+            "font-weight": "800 !important",
+            "justify-content": "center",
+            "width": "100%",
+            "text-align": "center",
         },
         ".ag-cell": {
-            "font-size": "18px",
             "display": "flex",
-            "align-items": "center",   # 👈 위아래 중앙
+            "justify-content": "center",
+            "align-items": "center",
+            "text-align": "center",
+            "font-size": "22px !important",
+            "font-weight": "500",
+        },
+        ".ag-row": {
+            "height": "48px !important",
         },
     }
 
@@ -73,8 +175,9 @@ def render_restaurant_grid(display_df):
         update_mode=GridUpdateMode.SELECTION_CHANGED,
         key="restaurant_picker", # 키 고정 필수!
         theme="streamlit",
-        height=500,
-        custom_css=custom_css
+        height=502,
+        custom_css=custom_css,
+        allow_unsafe_jscode=True
     )
 
     selected = grid.get("selected_rows")
@@ -83,7 +186,7 @@ def render_restaurant_grid(display_df):
     if isinstance(selected, pd.DataFrame) and not selected.empty:
         row = selected.iloc[0]
         # AgGrid의 인덱스 대신 '상호명'으로 원본 데이터 재조회 (더 안전함)
-        target_name = row["상호명"]
+        target_name = row["업체명"]
         actual_match = display_df[display_df["업체명"] == target_name]
 
         if not actual_match.empty:
@@ -102,21 +205,23 @@ def render_restaurant_map(df, selected_shp_cd, gdf_boundary, mapbox_api_key):
     # --- [1. 데이터 전처리] ---
     # df가 비어있지 않을 때만 데이터 가공 수행
     if not df.empty:
-        df["contract_status_display"] = df["contract_status"].fillna("후보")
-        df["access_display"] = df["대형차_접근성"].apply(lambda x: "미입력" if pd.isna(x) else f"{int(x)}/5")
+        df["access_display"] = df["주차_적합도"].apply(lambda x: "미입력" if pd.isna(x) else f"{int(x)}/5")
         df["remarks_display"] = df["remarks"].fillna("미입력")
 
         color_map = {
-            "미입력": [72, 141, 247],
-            "후보 식당": [255, 215, 0, 200],
-            "계약 성공": [76, 175, 80, 220],
-            "계약 실패": [244, 67, 54, 220],
+            "후보": [180, 180, 180, 200],        # 회색
+            "접촉": [33, 150, 243, 200],        # 파랑
+            "관심": [255, 193, 7, 220],         # 노랑
+            "협의": [255, 140, 0, 220],         # 주황
+            "성공": [76, 175, 80, 230],         # 초록
+            "실패": [244, 67, 54, 230],         # 빨강
         }
-        df["color"] = df["contract_status_display"].apply(lambda x: color_map.get(x, color_map["미입력"]))
+
+        df["color"] = df["contract_status"].apply(lambda x: color_map.get(x, color_map["후보"]))
 
         ICON_URL = "https://img.icons8.com/ios-filled/50/ffffff/marker.png"
         df["icon_data"] = [{"url": ICON_URL, "width": 128, "height": 128, "anchorY": 128, "mask": True} for _ in range(len(df))]
-        
+
         # 툴팁 생성
         df["tooltip_text"] = df.apply(lambda x: f"""
             <div style="font-family: 'Malgun Gothic', sans-serif; width: 220px; line-height: 1.6;">
@@ -124,12 +229,7 @@ def render_restaurant_map(df, selected_shp_cd, gdf_boundary, mapbox_api_key):
                 <small style="color:#bbb;">{x['도로명주소']}</small>
                 <hr style="margin:8px 0; border-color:#555;">
                 <div style="font-size:13px;">
-                    <b>🅿️ 주차장 면적:</b> {int(x['유휴부지면적']):,}㎡<br/>
-                    <b>⭐ 신뢰도점수:</b> {x['신뢰도점수'] if pd.notna(x['신뢰도점수']) else '-'}<br/>
-                    <b>🚚 접근성:</b> {x['access_display']}<br/>
-                    <b>🤝 상태:</b>{x['contract_status_display']}<br/>
-                    <hr style="margin:5px 0; border-style:dashed; border-color:#444;">
-                    <b>📝 비고:</b> <i style="color:#ddd;">{x['remarks_display']}</i>
+                    <b>🅿️ 유휴부지 면적:</b> {int(x['유휴부지_면적']):,}㎡<br/>
                 </div>
             </div>
         """, axis=1)
@@ -241,16 +341,15 @@ def render_restaurant_editor(full_df):
         edited_df = st.data_editor(
             editing_df,
             column_config={
-                "업체명": st.column_config.Column("상호명", disabled=True),
-                "신뢰도점수": st.column_config.NumberColumn("신뢰도", disabled=True, format="%.1f"),
-                "대형차_접근성": st.column_config.SelectboxColumn(
-                    "🚚 대형차 접근성", 
+                "업체명": st.column_config.Column("업체명", disabled=True),
+                "주차_적합도": st.column_config.SelectboxColumn(
+                    "주차 적합도",
                     options=[1, 2, 3, 4, 5],
                     help="1(매우나쁨) ~ 5(매우좋음)"
                 ),
                 "contract_status": st.column_config.SelectboxColumn(
-                    "🤝 계약 상태",
-                    options=["후보 식당", "계약 성공", "계약 실패"],
+                    "진행 상태",
+                    options=["후보", "접촉", "관심", "협의", "성공", "실패"],
                     required=True
                 ),
                 "remarks": st.column_config.TextColumn("📝 비고 (특이사항)")
@@ -272,7 +371,7 @@ def render_restaurant_editor(full_df):
                     name=final_row["업체명"],
                     # 원본 주소는 session_state나 원본 df에서 참조 (안전을 위해 editing_idx 활용 가능)
                     address=full_df.loc[target_idx, "도로명주소"], 
-                    access=None if pd.isna(final_row["대형차_접근성"]) else int(final_row["대형차_접근성"]),
+                    access=None if pd.isna(final_row["주차_적합도"]) else int(final_row["주차_적합도"]),
                     status=final_row["contract_status"],
                     remarks=None if (pd.isna(final_row["remarks"]) or str(final_row["remarks"]).strip() == "") else final_row["remarks"]
                 )
@@ -281,9 +380,6 @@ def render_restaurant_editor(full_df):
                 new_lat = full_df.loc[target_idx, "latitude"]
                 new_lon = full_df.loc[target_idx, "longitude"]
                 st.session_state["picked"] = (new_lat, new_lon)
-
-                # 3. 리런 시 그리드에서 다시 선택 이벤트를 타지 않도록 방어 (선택 사항)
-                st.session_state["_need_rerun"] = False 
 
                 st.session_state.save_msg = f"✅ '{target_name}' 정보 업데이트 완료!"
                 st.rerun()

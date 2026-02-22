@@ -46,52 +46,65 @@ def load_parking_data():
     query = 'SELECT "공영차고지명" AS name, "주소" AS address, lat, lon FROM truckhelper_parking_area'
     return pd.read_sql(query, get_engine())
 
-@st.cache_data
 def load_restaurants(target_sigungu: str):
-    search_terms = target_sigungu.split()
+    tokens = target_sigungu.split()
+    if not tokens: return pd.DataFrame()
 
-    # LIKE 조건을 동적으로 생성
-    like_clauses = []
-    params = {}
+    region_val = tokens[0].strip()
+    sigungu_val = " ".join(tokens[1:]).strip()
 
-    for i, term in enumerate(search_terms):
-        key = f"term_{i}"
-        like_clauses.append(f"m.법정동명 LIKE %({key})s")
-        params[key] = f"%{term}%"
-
-    where_like_sql = " AND ".join(like_clauses)
-
-    query = f"""
+    # 💡 쿼리에서 컬럼명을 명시적으로 "쌍따옴표"와 함께 작성합니다.
+    query = text("""
     WITH latest_date AS (
-        SELECT year, month
+        SELECT year, month, week
         FROM restaurant
-        ORDER BY year DESC, month DESC
+        WHERE region = :region
+        ORDER BY year DESC, month DESC, week DESC
         LIMIT 1
     )
     SELECT
-        m.*
+        m."업체명",
+        m."도로명주소",
+        m.latitude,
+        m.longitude,
+        m."총점",
+        m."수익성",
+        m."영업_적합도",
+        m."주차_적합도",
+        m."유휴부지_면적",
+        m.contract_status,
+        m.remarks,
+        m.year, m.month, m.week
     FROM restaurant m
-    CROSS JOIN latest_date ld
+    INNER JOIN latest_date ld ON 
+        m.year = ld.year AND 
+        m.month = ld.month AND 
+        m.week = ld.week
     WHERE
-        m.year = ld.year
-        AND m.month = ld.month
-        AND {where_like_sql}
-    ORDER BY m."유휴부지면적" DESC
-    """
+        m.region = :region
+        AND m.sigungu LIKE :sigungu
+    ORDER BY m."총점" DESC
+    LIMIT 15
+    """)
 
-    return pd.read_sql(query, get_engine(), params=params)
+    with get_engine().connect() as conn:
+        df = pd.read_sql(query, conn, params={"region": region_val, "sigungu": f"%{sigungu_val}%"})
+
+    return df
 
 # --- 업데이트 함수 ---
 def update_restaurant(name, address, access, status, remarks):
     engine = get_engine()
     with engine.begin() as conn:
+        # 💡 SET 절에서 "총점" 계산식을 직접 수행합니다.
+        # 주의: "화물차_접근성"이 정수형이므로 5.0으로 나누어 실수 연산을 유도합니다.
         query = text("""
             UPDATE restaurant
-            SET 
-                "대형차_접근성" = :access,
+            SET
+                "주차_적합도" = :access,
                 contract_status = :status,
                 remarks = :remarks,
-                viewed_at = CURRENT_TIMESTAMP
+                "총점" = "영업_적합도" * "수익성" * (:access / 5.0) * 100
             WHERE "업체명" = :name AND "도로명주소" = :address
         """)
 
@@ -102,13 +115,6 @@ def update_restaurant(name, address, access, status, remarks):
             "status": status, 
             "remarks": remarks
         })
-
-        # (옵션) 업데이트된 행이 없는 경우 로그를 남기거나 예외 처리를 할 수 있습니다.
-        if result.rowcount == 0:
-            print(f"⚠️ 업데이트 대상 없음: {name}")
-
-    # 데이터 수정 후 캐시 클리어 (중요)
-    st.cache_data.clear()
 
 def load_zscore_hotspots(selected_shp_cd):
     engine = get_engine()
