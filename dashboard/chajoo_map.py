@@ -100,8 +100,8 @@ def render_chajoo_grid(merged_df):
         ".ag-cell": {
             "justify-content": "center",
             "align-items": "center",
-            "font-size": "clamp(14px, 1.2vw, 22px) !important",
-            "font-weight": "500",
+            "font-size": "clamp(14px, 2.0vw, 22px) !important",
+            "font-weight": "800",
             "display": "flex",
             "align-items": "center"
         },
