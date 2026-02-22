@@ -4,6 +4,34 @@ import streamlit as st
 from st_aggrid import AgGrid, JsCode, GridOptionsBuilder, GridUpdateMode
 from core.query import update_restaurant
 
+
+def score_to_grade(x):
+    if pd.isna(x):
+        return None
+    if x >= 0.8:
+        return "A"
+    elif x >= 0.6:
+        return "B"
+    elif x >= 0.4:
+        return "C"
+    elif x >= 0.2:
+        return "D"
+    else:
+        return "E"
+
+
+def parking_to_grade(x):
+    if pd.isna(x):
+        return None
+    mapping = {
+        5: "A",
+        4: "B",
+        3: "C",
+        2: "D",
+        1: "E",
+    }
+    return mapping.get(int(x), None)
+
 def render_restaurant_grid(display_df):
 
 
@@ -21,33 +49,6 @@ def render_restaurant_grid(display_df):
     grid_df["_idx"] = display_df.index  # 원본 index 보관
     grid_df.insert(0, "순위", range(1, len(grid_df) + 1))
     grid_df["총점"] = grid_df["총점"].round().astype("Int64")
-
-    def score_to_grade(x):
-        if pd.isna(x):
-            return None
-        if x >= 0.8:
-            return "A"
-        elif x >= 0.6:
-            return "B"
-        elif x >= 0.4:
-            return "C"
-        elif x >= 0.2:
-            return "D"
-        else:
-            return "E"
-
-
-    def parking_to_grade(x):
-        if pd.isna(x):
-            return None
-        mapping = {
-            5: "A",
-            4: "B",
-            3: "C",
-            2: "D",
-            1: "E",
-        }
-        return mapping.get(int(x), None)
 
     grid_df["영업_적합도"] = grid_df["영업_적합도"].apply(score_to_grade)
     grid_df["수익성"] = grid_df["수익성"].apply(score_to_grade)
@@ -318,14 +319,22 @@ def render_restaurant_map(df, selected_shp_cd, gdf_boundary, mapbox_api_key):
 def render_restaurant_editor(full_df):
     """선택된 1개의 식당 정보만 수정할 수 있는 전용 에디터를 제공합니다."""
     
+    
+    
     # 1. 세션에 선택된 식당 데이터가 있는지 확인
     if "editing_data" not in st.session_state:
         st.subheader("📝 식당 정보 수정")
         st.info("💡 위 리스트에서 식당을 선택하면 상세 정보를 수정할 수 있습니다.")
         return
 
+
     # 세션에서 데이터 가져오기
     editing_df = st.session_state["editing_data"]
+    editing_df["수익성"] = editing_df["수익성"].apply(score_to_grade)
+    editing_df["영업_적합도"] = editing_df["영업_적합도"].apply(score_to_grade)
+    editing_df["주차_적합도"] = editing_df["주차_적합도"].apply(parking_to_grade)
+    editing_df["총점"] = editing_df["총점"].round().astype("Int64")
+
     target_name = editing_df["업체명"].iloc[0]
     target_idx = st.session_state.get("editing_idx")
 
@@ -335,17 +344,22 @@ def render_restaurant_editor(full_df):
         st.success(st.session_state.save_msg)
         del st.session_state.save_msg
 
+    grade_to_score = {"A": 5, "B": 4, "C": 3, "D": 2, "E": 1}
+
     # 2. 폼을 사용하여 1개의 행만 편집
     with st.form("single_update_form"):
+ 
         # 선택된 5개 컬럼만 에디터에 노출
         edited_df = st.data_editor(
             editing_df,
             column_config={
                 "업체명": st.column_config.Column("업체명", disabled=True),
+                "수익성": st.column_config.Column("수익성", disabled=True),
+                "영업_적합도": st.column_config.Column("영업 적합도", disabled=True),
                 "주차_적합도": st.column_config.SelectboxColumn(
                     "주차 적합도",
-                    options=[1, 2, 3, 4, 5],
-                    help="1(매우나쁨) ~ 5(매우좋음)"
+                    options=["A", "B", "C", "D", "E"],
+                    help="A(매우좋음) ~ E(매우나쁨)"
                 ),
                 "contract_status": st.column_config.SelectboxColumn(
                     "진행 상태",
@@ -366,12 +380,16 @@ def render_restaurant_editor(full_df):
                 # 에디터에서 수정한 최종 값 가져오기
                 final_row = edited_df.iloc[0]
 
+                # 주차 등급을 다시 숫자로 변환
+                selected_grade = final_row["주차_적합도"]
+                numeric_parking = grade_to_score.get(selected_grade, None)
+
                 # DB 업데이트 함수 호출
                 update_restaurant(
                     name=final_row["업체명"],
                     # 원본 주소는 session_state나 원본 df에서 참조 (안전을 위해 editing_idx 활용 가능)
                     address=full_df.loc[target_idx, "도로명주소"], 
-                    access=None if pd.isna(final_row["주차_적합도"]) else int(final_row["주차_적합도"]),
+                    access=numeric_parking,
                     status=final_row["contract_status"],
                     remarks=None if (pd.isna(final_row["remarks"]) or str(final_row["remarks"]).strip() == "") else final_row["remarks"]
                 )
