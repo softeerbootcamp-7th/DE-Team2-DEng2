@@ -28,7 +28,7 @@ def load_chajoo_data():
 
     # 2. 조회된 최신 날짜로 데이터 로드
     query = """
-        SELECT "sido", "sigungu", "SHP_CD" AS shp_cd, "cargo_sales_count" AS value
+        SELECT "sido", "sigungu", "SHP_CD" AS shp_cd, "cargo_count" AS value, "전략적_중요도" AS score
         FROM chajoo_dist
         WHERE "year" = %s
           AND "month" = %s
@@ -46,43 +46,75 @@ def load_parking_data():
     query = 'SELECT "공영차고지명" AS name, "주소" AS address, lat, lon FROM truckhelper_parking_area'
     return pd.read_sql(query, get_engine())
 
-@st.cache_data
-def load_restaurants():
-    query = """
+def load_restaurants(target_sigungu: str):
+    tokens = target_sigungu.split()
+    if not tokens: return pd.DataFrame()
+
+    region_val = tokens[0].strip()
+    sigungu_val = " ".join(tokens[1:]).strip()
+
+    # 💡 쿼리에서 컬럼명을 명시적으로 "쌍따옴표"와 함께 작성합니다.
+    query = text("""
     WITH latest_date AS (
-        SELECT year, month FROM restaurant_master ORDER BY year DESC, month DESC LIMIT 1
+        SELECT year, month, week
+        FROM restaurant
+        WHERE region = :region
+        ORDER BY year DESC, month DESC, week DESC
+        LIMIT 1
     )
-    SELECT m.*, s.large_vehicle_access, s.contract_status, s.remarks
-    FROM restaurant_master m
-    CROSS JOIN latest_date ld
-    LEFT JOIN restaurant_status s 
-        ON m."업체명" = s."업체명" AND m."도로명주소" = s."도로명주소"
-    -- 신고 테이블과 LEFT JOIN
-    LEFT JOIN report_history r
-        ON m."업체명" = r."업체명" AND m."도로명주소" = r."도로명주소"
-    WHERE m.year = ld.year AND m.month = ld.month
-      AND m.longitude IS NOT NULL AND m.latitude IS NOT NULL
-      -- 신고 테이블(r)에 매칭되는 데이터가 없는 경우만 선택
-      AND r."업체명" IS NULL
-    """
-    return pd.read_sql(query, get_engine())
+    SELECT
+        m."업체명",
+        m."도로명주소",
+        m.latitude,
+        m.longitude,
+        m."총점",
+        m."수익성",
+        m."영업_적합도",
+        m."주차_적합도",
+        m."유휴부지_면적",
+        m.contract_status,
+        m.remarks,
+        m.year, m.month, m.week
+    FROM restaurant m
+    INNER JOIN latest_date ld ON 
+        m.year = ld.year AND 
+        m.month = ld.month AND 
+        m.week = ld.week
+    WHERE
+        m.region = :region
+        AND m.sigungu LIKE :sigungu
+    ORDER BY m."총점" DESC
+    LIMIT 15
+    """)
+
+    with get_engine().connect() as conn:
+        df = pd.read_sql(query, conn, params={"region": region_val, "sigungu": f"%{sigungu_val}%"})
+
+    return df
 
 # --- 업데이트 함수 ---
-def update_restaurant_status(name, address, access, status, remarks):
+def update_restaurant(name, address, access, status, remarks):
     engine = get_engine()
     with engine.begin() as conn:
+        # 💡 SET 절에서 "총점" 계산식을 직접 수행합니다.
+        # 주의: "화물차_접근성"이 정수형이므로 5.0으로 나누어 실수 연산을 유도합니다.
         query = text("""
-            INSERT INTO restaurant_status ("업체명", "도로명주소", large_vehicle_access, contract_status, remarks)
-            VALUES (:name, :address, :access, :status, :remarks)
-            ON CONFLICT ("업체명", "도로명주소")
-            DO UPDATE SET
-                large_vehicle_access = EXCLUDED.large_vehicle_access,
-                contract_status = EXCLUDED.contract_status,
-                remarks = EXCLUDED.remarks,
-                updated_at = CURRENT_TIMESTAMP
+            UPDATE restaurant
+            SET
+                "주차_적합도" = :access,
+                contract_status = :status,
+                remarks = :remarks,
+                "총점" = "영업_적합도" * "수익성" * (:access / 5.0) * 100
+            WHERE "업체명" = :name AND "도로명주소" = :address
         """)
-        conn.execute(query, {"name": name, "address": address, "access": access, "status": status, "remarks": remarks})
-    st.cache_data.clear()
+
+        result = conn.execute(query, {
+            "name": name, 
+            "address": address, 
+            "access": access, 
+            "status": status, 
+            "remarks": remarks
+        })
 
 def load_zscore_hotspots(selected_shp_cd):
     engine = get_engine()
@@ -96,30 +128,39 @@ def load_zscore_hotspots(selected_shp_cd):
     """
     return pd.read_sql(query, engine)
 
-def save_report(company_name, road_address):
+
+def get_last_viewed_sigungu():
     """
-    업체명과 도로명주소를 받아 report_history 테이블에 저장합니다.
+    DB에서 ID 1번에 저장된 마지막 조회 지역명을 가져옵니다.
+    데이터가 없으면 기본값인 '경기도 평택시'를 반환합니다.
+    """
+    engine = get_engine()
+    query = text("SELECT sigungu FROM user_view_history WHERE id = 1")
+
+    try:
+        df = pd.read_sql(query, engine)
+        if not df.empty:
+            return df.iloc[0]['sigungu']
+        return "경기도 평택시"
+    except Exception:
+        # 테이블이 없거나 연결 오류 시 대비
+        return "경기도 평택시"
+
+def save_view_history(sigungu):
+    """
+    ID 1번 행에 현재 조회 중인 지역명을 업데이트(UPSERT)합니다.
     """
     engine = get_engine()
 
-    # 1. SQL 쿼리 작성 (복합키 충돌 시 신고일자만 업데이트하거나 무시)
-    # :name, :address 등은 SQL Injection 방지를 위한 파라미터 바인딩 방식입니다.
+    # f-string 대신 파라미터 바인딩(:sigungu)을 사용하는 것이 보안상 더 안전합니다.
     query = text("""
-        INSERT INTO report_history (업체명, 도로명주소, 신고일자)
-        VALUES (:name, :address, :report_date)
-        ON CONFLICT (업체명, 도로명주소)
-        DO UPDATE SET 신고일자 = EXCLUDED.신고일자;
+        INSERT INTO user_view_history (id, sigungu, viewed_at)
+        VALUES (1, :sigungu, CURRENT_TIMESTAMP)
+        ON CONFLICT (id) DO UPDATE 
+        SET sigungu = EXCLUDED.sigungu,
+            viewed_at = CURRENT_TIMESTAMP;
     """)
 
-    try:
-        with engine.begin() as conn:
-            conn.execute(query, {
-                "name": company_name,
-                "address": road_address,
-                "report_date": datetime.now().date()
-            })
-        print(f"신고 완료: {company_name}")
-        return True
-    except Exception as e:
-        print(f"신고 저장 중 오류 발생: {e}")
-        return False
+    with engine.begin() as conn:
+        # text() 객체와 함께 파라미터를 딕셔너리 형태로 전달합니다.
+        conn.execute(query, {"sigungu": sigungu})

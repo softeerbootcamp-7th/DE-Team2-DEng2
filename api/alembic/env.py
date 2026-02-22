@@ -22,6 +22,7 @@ import api.models.restaurant
 import api.models.chajoo
 import api.models.truckhelper
 import api.models.report_history
+import api.models.user_view_history
 
 target_metadata = Base.metadata
 

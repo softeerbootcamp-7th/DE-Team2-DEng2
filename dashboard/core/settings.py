@@ -11,4 +11,4 @@ DASHBOARD_DB_CONNECTION = os.getenv(
     "DASHBOARD_DB_CONNECTION", "local"
 )  # "local" 또는 "aws"
 
-SHP_PATH = BASE_DIR / "dashboard/data/sigungu_shp/bnd_sigungu_00.shp"
+SHP_PATH = BASE_DIR / "dashboard/data/shp.parquet"
