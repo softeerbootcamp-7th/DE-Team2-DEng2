@@ -326,11 +326,16 @@ def render_restaurant_editor(full_df):
         return
 
 
-    # 세션에서 데이터 가져오기
-    editing_df = st.session_state["editing_data"]
-    editing_df["수익성"] = editing_df["수익성"].apply(score_to_grade)
-    editing_df["영업_적합도"] = editing_df["영업_적합도"].apply(score_to_grade)
-    editing_df["주차_적합도"] = editing_df["주차_적합도"].apply(parking_to_grade)
+    # 세션에서 데이터 가져오기 (원본 변형 방지를 위해 복사)
+    editing_df = st.session_state["editing_data"].copy()
+
+    # 이미 등급 문자열로 변환된 경우(rerun) 중복 변환 방지
+    if editing_df["수익성"].dtype != object:
+        editing_df["수익성"] = editing_df["수익성"].apply(score_to_grade)
+    if editing_df["영업_적합도"].dtype != object:
+        editing_df["영업_적합도"] = editing_df["영업_적합도"].apply(score_to_grade)
+    if editing_df["주차_적합도"].dtype != object:
+        editing_df["주차_적합도"] = editing_df["주차_적합도"].apply(parking_to_grade)
     editing_df["총점"] = editing_df["총점"].round().astype("Int64")
 
     target_name = editing_df["업체명"].iloc[0]
