@@ -62,8 +62,7 @@ def slack_notify(text: str, webhook_url: Optional[str] = None):
     except Exception as e:
         logging.info(f"⚠ Slack 전송 실패: {e}")
 
-def setup_logging(output_dir):
-    log_dir = os.path.join(output_dir, "logs")
+def setup_logging(log_dir):
     os.makedirs(log_dir, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -72,15 +71,11 @@ def setup_logging(output_dir):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
-    formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(message)s"
-    )
+    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
 
-    # 파일 로그
     fh = logging.FileHandler(log_file, encoding="utf-8")
     fh.setFormatter(formatter)
 
-    # 콘솔 로그
     ch = logging.StreamHandler()
     ch.setFormatter(formatter)
 
@@ -88,7 +83,6 @@ def setup_logging(output_dir):
     logger.addHandler(ch)
 
     logging.info(f"로그 파일 생성: {log_file}")
-
     return log_file
 
 def build_full_address(addr: dict) -> str:
@@ -124,32 +118,43 @@ def build_pdf_filename(addr: dict) -> str:
 
     return sanitize_filename(name) + ".pdf"
 
+def get_pdf_output_dir(addr: dict) -> str:
+    region = addr["region"]
+    sigungu = addr["sigungu"]
+
+    path = os.path.join(
+        PDF_BASE_DIR,
+        f"region={region}",
+        f"sigungu={sigungu}"
+    )
+
+    os.makedirs(path, exist_ok=True)
+    return path
+
 def pdf_already_exists(addr: dict) -> bool:
     filename = build_pdf_filename(addr)
-    path = os.path.join(OUTPUT_DIR, filename)
+    dir_path = get_pdf_output_dir(addr)
+    path = os.path.join(dir_path, filename)
     return os.path.exists(path)
 
 def rename_pdf_to_address(addr: dict):
-    safe_name = build_pdf_filename(addr)
+    src_path = os.path.join(PDF_TEMP_DIR, ORIGINAL_FILE_NAME)
 
-    pdf_path = os.path.join(OUTPUT_DIR, ORIGINAL_FILE_NAME)
+    if not os.path.exists(src_path):
+        raise FileNotFoundError("PDF 다운로드 안됨")
 
-    new_path = os.path.join(
-        os.path.dirname(pdf_path),
-        safe_name
+    dst_path = os.path.join(
+        get_pdf_output_dir(addr),
+        build_pdf_filename(addr)
     )
 
-    os.rename(pdf_path, new_path)
-
-    return new_path
-
+    os.rename(src_path, dst_path)
+    return dst_path
 
 def load_addresses_from_parquet_dir(dir_path, start_idx=0, end_idx=None):
     addresses = []
-
     parquet_files = []
 
-    # 모든 하위 parquet 탐색
     for root, _, files in os.walk(dir_path):
         for f in files:
             if f.lower().endswith(".parquet"):
@@ -160,9 +165,15 @@ def load_addresses_from_parquet_dir(dir_path, start_idx=0, end_idx=None):
 
     logging.info(f"📂 parquet 파일 {len(parquet_files)}개 발견")
 
-    # parquet 하나씩 읽기
     for file in sorted(parquet_files):
         logging.info(f"→ 읽는 중: {file}")
+
+        # ⭐ 경로에서 region / sigungu 파싱
+        region_match = re.search(r"region=([^/\\]+)", file)
+        sigungu_match = re.search(r"sigungu=([^/\\]+)", file)
+
+        region = region_match.group(1) if region_match else "unknown"
+        sigungu = sigungu_match.group(1) if sigungu_match else "unknown"
 
         df = pd.read_parquet(file)
 
@@ -172,30 +183,36 @@ def load_addresses_from_parquet_dir(dir_path, start_idx=0, end_idx=None):
             bonbun = str(row["본번"]).strip()
             bubun_list = re.findall(r'\d+', str(row["부번_리스트"]))
 
-            if len(bubun_list) == 0:
-                sub_no = ""
-            else:
-                sub_no = bubun_list[0]
-
+            sub_no = bubun_list[0] if bubun_list else ""
             changed_date = str(row["소유권변동일자"]).strip()
 
             addresses.append({
                 "base": base_addr,
                 "main": bonbun,
                 "sub": sub_no,
-                "changed_date": changed_date
+                "changed_date": changed_date,
+                "region": region,
+                "sigungu": sigungu
             })
 
-
-    # 인덱스 범위 처리
     if end_idx is None:
         end_idx = len(addresses)
 
     sliced = addresses[start_idx:end_idx]
-
     logging.info(f"총 주소 {len(addresses)}개 → 선택 {len(sliced)}개")
 
     return sliced
+
+def wait_for_pdf(timeout=WAIT_NORMAL):
+    start = time.time()
+    path = os.path.join(PDF_TEMP_DIR, ORIGINAL_FILE_NAME)
+
+    while time.time() - start < timeout:
+        if os.path.exists(path):
+            return True
+        time.sleep(0.5)
+
+    return False
 
 
 # ============================================================
@@ -203,7 +220,7 @@ def load_addresses_from_parquet_dir(dir_path, start_idx=0, end_idx=None):
 # ============================================================
 
 def build_chrome_driver(headless=False):
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(PDF_TEMP_DIR, exist_ok=True)
     opts = ChromeOptions()
 
     prefs = {
@@ -216,7 +233,7 @@ def build_chrome_driver(headless=False):
             "selectedDestinationId": "Save as PDF",
             "version": 2
         }),
-        "savefile.default_directory": os.path.abspath(OUTPUT_DIR)
+        "savefile.default_directory": os.path.abspath(PDF_TEMP_DIR)
     }
 
     opts.add_experimental_option("prefs", prefs)
@@ -513,7 +530,7 @@ def get_pdf(driver):
 # ============================================================
 
 def run_land_register(driver, address):
-    if os.path.exists(ORIGINAL_FILE_NAME):
+    if os.path.exists(os.path.join(PDF_TEMP_DIR, ORIGINAL_FILE_NAME)):
         raise FileExistsError(f"알 수 없는 PDF 파일: {ORIGINAL_FILE_NAME}")
 
     force_navigation(driver, "https://plus.gov.kr/")
@@ -536,6 +553,8 @@ def run_land_register(driver, address):
     fill_form(driver, address)
     
     if get_pdf(driver):
+        if not wait_for_pdf():
+            raise Exception("PDF timeout")
         rename_pdf_to_address(address)
     else:
         raise Exception
@@ -572,18 +591,20 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--output_dir",
-        default="./data/tojidaejang/_work",
-        help="토지대장 pdf가 저장될 폴더 경로 (기본 경로: ./data/togidaejang/_work)"
+        "--base_dir",
+        default="./data/bronze/tojidaejang/_work",
+        help="tojidaejang 작업 루트 폴더"
     )
 
     args = parser.parse_args()
 
-    global OUTPUT_DIR
+    BASE_DIR = args.base_dir
 
-    OUTPUT_DIR = os.path.join(args.output_dir, "output")
+    PDF_BASE_DIR = os.path.join(BASE_DIR, "pdf")
+    PDF_TEMP_DIR = os.path.join(BASE_DIR, "_temp_download")
+    LOG_DIR = os.path.join(BASE_DIR, "logs")
 
-    setup_logging(OUTPUT_DIR)
+    setup_logging(LOG_DIR)
 
     address_list = load_addresses_from_parquet_dir(
         args.path,
@@ -642,15 +663,8 @@ if __name__ == "__main__":
     if failures:
         df_fail = pd.DataFrame(failures)
 
-        fail_parquet_path = os.path.join(
-            os.path.join(OUTPUT_DIR, "logs"),
-            "failures.parquet"
-        )
-
-        fail_csv_path = os.path.join(
-            os.path.join(OUTPUT_DIR, "logs"),
-            "failures.csv"
-        )
+        fail_parquet_path = os.path.join(LOG_DIR, "failures.parquet")
+        fail_csv_path = os.path.join(LOG_DIR, "failures.csv")
 
         df_fail.to_parquet(fail_parquet_path, index=False)
 
