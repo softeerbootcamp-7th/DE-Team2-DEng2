@@ -2,6 +2,12 @@ target:
     REGION: "경기"
     SIGUNGU: "평택시"
 
+option:
+    crawling_list:
+        # true면 변경분만
+        only_changed: true
+        changed_days: 30
+
 data_lake:
 
     # Spark 컨테이너 기준 루트
@@ -54,6 +60,10 @@ data_lake:
               refresh_cycle: "weekly"
               paths:
                 parquet: "bronze/restaurant_owner/parquet"
+
+            tojidaejang:
+              paths:
+                pdf: "bronze/tojidaejang/_work/pdf"
         
         
         # ========================================================
