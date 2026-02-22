@@ -521,11 +521,11 @@ def convert_xlsx_to_parquet(
     # --- 0. 경로 설정 ---
     yyyymm = str(yyyymm).strip()
     year_str, month_str = yyyymm[:4], yyyymm[4:6]
-    
+
     parquet_path = out_dir_root / "part.parquet"
     gold_parquet_path = gold_dir_root / "part.parquet"
 
-    if parquet_path.exists() and not cfg.force_run:
+    if parquet_path.exists() and gold_parquet_path.exists() and not cfg.force_run:
         return f"Skipped: {yyyymm} 데이터가 이미 존재합니다."
 
     # --- 1. 엑셀 읽기 (차주 데이터만) ---
@@ -636,35 +636,29 @@ def main():
     try:
         notifier.info("작업 시작", f"{target_yyyymm[:4]}년 {target_yyyymm[4:]}월 데이터 추출 시작")
 
-        # --------------------------------------------------
-        # 1. 차주 분포 데이터 다운로드 (chajoo 폴더)
-        # --------------------------------------------------
-        logger.info("차주 분포 데이터 수집 시작")
-        driver_chajoo = build_driver(paths["chajoo_xlsx"], cfg)
-        driver_chajoo.get(cfg.url_chajoo)
+        # ---------------------------------------
+        # 차주 분포 데이터 다운로드 (chajoo 폴더)
+        # ---------------------------------------
+        existing_files = list(paths["chajoo_xlsx"].glob("*.xlsx"))
+        if existing_files:
+            # 파일이 이미 있다면 첫 번째 파일을 경로로 지정하고 스킵
+            path_chajoo = existing_files[0]
+            logger.info(f">>> 이미 엑셀 파일이 존재하여 수집을 건너뜁니다: {path_chajoo.name}")
+        else:
+            logger.info("차주 분포 데이터 수집 시작")
+            driver_chajoo = build_driver(paths["chajoo_xlsx"], cfg)
+            driver_chajoo.get(cfg.url_chajoo)
 
-        path_chajoo, used_mm_chajoo = perform_download(
-            driver_chajoo, logger, cfg, paths["chajoo_xlsx"], yyyymm=target_yyyymm
-        )
-        logger.info(f"Step 1 완료: {path_chajoo.name} (실제수집: {used_mm_chajoo})")
-
-
-        # --------------------------------------------------
-        # 2. 지역 면적 (area 폴더)
-        # --------------------------------------------------
-        # logger.info("Step 2: 지역 면적 데이터 수집 시작")
-        # driver_area = build_driver(paths["area_xlsx"], cfg)
-        # driver_area.get(cfg.url_area)
-
-        # path_area, used_mm_area = perform_download(
-        #     driver_area, logger, cfg, paths["area_xlsx"], yyyymm=target_yyyymm
-        # )
-        # logger.info(f"Step 2 완료: {path_area.name} (실제수집: {used_mm_area})")
+            path_chajoo, used_mm_chajoo = perform_download(
+                driver_chajoo, logger, cfg, paths["chajoo_xlsx"], yyyymm=target_yyyymm
+            )
+            logger.info(f"Step 1 완료: {path_chajoo.name} (실제수집: {used_mm_chajoo})")
 
 
-        # --------------------------------------------------
-        # [STEP 3] 데이터 전처리 및 병합 (이후 단계)
-        # --------------------------------------------------
+
+        # ---------------------
+        # 데이터 전처리 및 병합
+        # ---------------------
         status_msg = convert_xlsx_to_parquet(path_chajoo, paths["parquet"], paths["gold"], cfg, logger, target_yyyymm)
         logger.info(f"데이터 전처리 완료: {status_msg}")
 
