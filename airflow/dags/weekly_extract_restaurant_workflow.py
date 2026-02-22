@@ -36,7 +36,7 @@ with DAG(
     dag_id='restaurant_weekly_extract',
     default_args=default_args,
     description='주배치: 음식점 대표자 데이터 수집',
-    schedule=None,
+    schedule="30 2 1 * *",
     start_date=datetime(2026, 2, 1),
     catchup=False,
     tags=['weekly', 'restaurant', 'bronze'],

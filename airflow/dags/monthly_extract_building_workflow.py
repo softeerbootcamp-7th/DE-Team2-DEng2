@@ -36,7 +36,7 @@ with DAG(
     dag_id='building_leader_monthly_extract',
     default_args=default_args,
     description='월배치: 건축물대장 표제부 데이터 수집',
-    schedule=None,
+    schedule="0 1 1 * *",
     start_date=datetime(2026, 2, 1),
     catchup=False,
     tags=['monthly', 'building', 'bronze'],

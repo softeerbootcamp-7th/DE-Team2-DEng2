@@ -38,7 +38,7 @@ with DAG(
     dag_id='toji_soyu_monthly_extract',
     default_args=default_args,
     max_active_runs=1,
-    schedule=None,
+    schedule="0 2 1 * *",
     start_date=datetime(2026, 2, 1),
     catchup=False,
     tags=['monthly', 'tojisoyu', 'bronze'],

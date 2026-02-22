@@ -38,7 +38,7 @@ with DAG(
     dag_id='chajoo_dist_monthly_extract',
     default_args=default_args,
     description='월배치: 자동차등록현황보고 데이터 수집',
-    schedule=None,
+    schedule="30 1 1 * *",
     start_date=datetime(2026, 2, 1),
     catchup=False,
     tags=['monthly', 'chajoo', 'bronze'],
