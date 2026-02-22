@@ -67,6 +67,7 @@ with DAG(
     start_date=datetime(2026, 2, 1),
     catchup=False,
     tags=["daily", "transform", "gold"],
+    on_success_callback=slack_success_callback,
 ) as dag:
 
     # Sensors: S1/S2 입력 데이터 존재 확인
@@ -120,7 +121,6 @@ with DAG(
             f"--prefix data/gold/restaurant "
             f"--exclude _work --exclude .DS_Store --exclude _SUCCESS"
         ),
-        on_success_callback=slack_success_callback,
     )
 
     [sense_s1_toji_list, sense_s2_ownership] >> s1_to_s2 >> upload_s2 >> s2_to_gold >> upload_gold
