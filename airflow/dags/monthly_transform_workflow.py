@@ -10,11 +10,7 @@ load_dotenv("/opt/airflow/project/.env")
 
 sys.path.append("/opt/airflow/project")
 
-try:
-    from data_pipeline.utils.slack_utils import SlackNotifier
-except ImportError as e:
-    print(f"Import Error: {e}")
-
+from utils.slack_utils import slack_failure_callback, slack_success_callback
 from utils.sensor_helpers import check_parquet_exists
 
 # ==========================================================
@@ -27,30 +23,6 @@ JOBS_DIR = "/opt/spark/jobs"
 PROJECT_DIR = "/opt/airflow/project"
 UTILS_DIR = f"{PROJECT_DIR}/data_pipeline/utils"
 DATA_DIR = f"{PROJECT_DIR}/data"
-
-
-def send_slack_alert(title, message, status="info"):
-    notifier = SlackNotifier(
-        webhook_url=os.getenv("SLACK_WEBHOOK_URL"),
-        stage="TRANSFORM-Monthly",
-        logger=None,
-    )
-    if status == "error":
-        notifier.error(title, Exception(message))
-    elif status == "success":
-        notifier.success(title, message)
-    else:
-        notifier.info(title, message)
-
-
-def slack_failure_callback(context):
-    task_id = context["task_instance"].task_id
-    send_slack_alert(f"[Airflow] transform_monthly / {task_id} 실패", str(context.get("exception")), status="error")
-
-
-def slack_success_callback(context):
-    send_slack_alert("[Airflow] transform_monthly 완료", "월배치 Transform (Bronze → S0) 모든 task 성공", status="success")
-
 
 
 default_args = {
