@@ -132,7 +132,6 @@ def render_restaurant_grid(display_df):
         """)
     )
 
-    # 비고는 보통 길기 때문에 pinned를 빼서 오른쪽에 두거나, 
     gb.configure_column("비고", wrapText=True, autoHeight=True)
 
     gb.configure_grid_options(
@@ -244,9 +243,9 @@ def render_restaurant_map(df, selected_shp_cd, gdf_boundary, mapbox_api_key):
 
     if not target_gdf.empty:
         boundary_layer = pdk.Layer(
-            "GeoJsonLayer", target_gdf, 
+            "GeoJsonLayer", target_gdf,
             stroked=True, filled=True,
-            get_fill_color=[0, 212, 255, 30], 
+            get_fill_color=[0, 212, 255, 30],
             get_line_color=[255, 255, 255, 200],
             line_width_min_pixels=2,
         )
@@ -319,9 +318,7 @@ def render_restaurant_map(df, selected_shp_cd, gdf_boundary, mapbox_api_key):
 
 def render_restaurant_editor(full_df):
     """선택된 1개의 식당 정보만 수정할 수 있는 전용 에디터를 제공합니다."""
-    
-    
-    
+
     # 1. 세션에 선택된 식당 데이터가 있는지 확인
     if "editing_data" not in st.session_state:
         st.subheader("📝 식당 정보 수정")
@@ -349,7 +346,7 @@ def render_restaurant_editor(full_df):
 
     # 2. 폼을 사용하여 1개의 행만 편집
     with st.form("single_update_form"):
- 
+
         # 선택된 5개 컬럼만 에디터에 노출
         edited_df = st.data_editor(
             editing_df,
@@ -369,7 +366,7 @@ def render_restaurant_editor(full_df):
                 ),
                 "remarks": st.column_config.TextColumn("📝 비고 (특이사항)")
             },
-            hide_index=True, 
+            hide_index=True,
             width="stretch",
             key="single_editor_widget"
         )
@@ -389,7 +386,7 @@ def render_restaurant_editor(full_df):
                 update_restaurant(
                     name=final_row["업체명"],
                     # 원본 주소는 session_state나 원본 df에서 참조 (안전을 위해 editing_idx 활용 가능)
-                    address=full_df.loc[target_idx, "도로명주소"], 
+                    address=full_df.loc[target_idx, "도로명주소"],
                     access=numeric_parking,
                     status=final_row["contract_status"],
                     remarks=None if (pd.isna(final_row["remarks"]) or str(final_row["remarks"]).strip() == "") else final_row["remarks"]
