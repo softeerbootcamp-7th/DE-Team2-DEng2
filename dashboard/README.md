@@ -87,28 +87,9 @@ streamlit run dashboard/0_🍽️_식당_주차장_관리.py
 
 ---
 
-### 3. `restaurant_status`
-식당 계약 및 접근성 상태 관리 테이블  
-대시보드 UI에서 **사용자 입력으로 갱신**됩니다.
-
-| 컬럼명 | 타입 | 설명 |
-|------|------|------|
-| 업체명 | text | 식당명 (PK 구성) |
-| 도로명주소 | text | 도로명 주소 (PK 구성) |
-| large_vehicle_access | integer | 대형차 진입 가능 여부 |
-| contract_status | text | 계약 상태 |
-| remarks | text | 비고 |
-| created_at | timestamp | 생성 시각 |
-| updated_at | timestamp | 수정 시각 |
-
-**Indexes**
-- Primary Key: (`업체명`, `도로명주소`)
-
----
-
-### 4. `public.truckhelper_parking_area`
-기존 공영 차고지 정보 테이블  
-비교용 레퍼런스 데이터로 사용됩니다.
+### 3. `truckhelper_parking_area`
+트럭헬퍼의 기존 공영 차고지 정보 테이블  
+식당 공략 지역을 정할 때 참고할 자료입니다.
 
 | 컬럼명 | 타입 | 설명 |
 |------|------|------|
@@ -116,26 +97,3 @@ streamlit run dashboard/0_🍽️_식당_주차장_관리.py
 | 주소 | text | 주소 |
 | lat | double precision | 위도 |
 | lon | double precision | 경도 |
-
----
-
-### 5. `public.cargo_zscore_hotspots`
-화물차주 분포의 통계적 유의성을 분석한 **Z-Score 핫스팟** 테이블입니다.  
-단순 수치를 넘어 밀집 지역의 통계적 특성을 시각화하는 데 사용됩니다.
-
-| 컬럼명 | 타입 | 설명 |
-|:---:|:---:|---|
-| **sigungu_cd** | bigint | 시군구 코드 |
-| **oa_code** | bigint | 집계구 코드 (Output Area) |
-| **value** | double precision | 해당 구역의 화물차주 수 또는 밀도 |
-| **z_score** | double precision | 통계적 유의성을 나타내는 Z-점수 |
-| **lat** | double precision | 해당 구역 중심점 위도 |
-| **lon** | double precision | 해당 구역 중심점 경도 |
-
-## ⚠️ 주의사항
-
-- 모든 테이블은 **동일한 데이터베이스 스키마 (`public`)**에 존재해야 합니다.
-- `restaurant_master` ↔ `restaurant_status`는  
-  (`업체명`, `도로명주소`) 기준으로 JOIN 됩니다.
-- 컬럼명은 **한글 컬럼명을 그대로 사용**하므로  
-  DB 스키마 변경 시 대시보드 코드도 함께 수정해야 합니다.
