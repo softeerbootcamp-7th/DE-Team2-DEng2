@@ -1,13 +1,15 @@
 from typing import Optional
-from sqlalchemy import Float, Index, Integer, PrimaryKeyConstraint, Text
+from sqlalchemy import Float, Integer, PrimaryKeyConstraint, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from api.models.base import Base
 
 class Restaurant(Base):
     __tablename__ = "restaurant"
     __table_args__ = (
-        PrimaryKeyConstraint("업체명", "도로명주소"),
-        Index("idx_restaurant_location", "latitude", "longitude"),
+        PrimaryKeyConstraint(
+            "업체명", "도로명주소", "year", "month", "week",
+            name="pk_restaurant"
+        ),
     )
 
     # 행정 구역 정보
@@ -29,16 +31,16 @@ class Restaurant(Base):
     latitude: Mapped[Optional[float]] = mapped_column("latitude", Float)
 
     # 시계열 정보
-    year: Mapped[Optional[int]] = mapped_column("year", Integer)
-    month: Mapped[Optional[int]] = mapped_column("month", Integer)
-    week: Mapped[Optional[int]] = mapped_column("week", Integer)
+    year: Mapped[Optional[int]] = mapped_column("year", Integer, nullable=False)
+    month: Mapped[Optional[int]] = mapped_column("month", Integer, nullable=False)
+    week: Mapped[Optional[int]] = mapped_column("week", Integer, nullable=False)
 
     # 🚚 추가된 접근성 및 관리 컬럼
     truck_accessibility: Mapped[Optional[int]] = mapped_column("주차_적합도", Integer)
     contract_status: Mapped[str] = mapped_column(
-        "contract_status", 
-        Text, 
-        insert_default="후보",  # 스키마의 DEFAULT '후보' 반영
-        nullable=False
+        "contract_status",
+        Text,
+        server_default="'후보'",
+        nullable=False,
     )
     remarks: Mapped[Optional[str]] = mapped_column("remarks", Text)

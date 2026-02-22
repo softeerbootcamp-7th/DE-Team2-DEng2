@@ -20,15 +20,3 @@ class ChajooDist(Base):
     SHP_CD: Mapped[Optional[str]] = mapped_column(Text)
     score: Mapped[Optional[float]] = mapped_column("전략적_중요도", Float)
     cargo_count: Mapped[Optional[int]] = mapped_column(BigInteger)
-
-
-class ChajooHotspot(Base):
-    __tablename__ = "cargo_zscore_hotspots"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    sigungu_cd: Mapped[str] = mapped_column(Text)
-    oa_code: Mapped[Optional[int]] = mapped_column(BigInteger)
-    lat: Mapped[Optional[float]] = mapped_column(Float)
-    lon: Mapped[Optional[float]] = mapped_column(Float)
-    value: Mapped[Optional[float]] = mapped_column(Float)
-    z_score: Mapped[Optional[float]] = mapped_column(Float)
