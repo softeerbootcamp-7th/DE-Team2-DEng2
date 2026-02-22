@@ -69,7 +69,7 @@ def render_restaurant_grid(display_df):
     gb.configure_selection(selection_mode="single", use_checkbox=False)
 
     gb.configure_column("순위", pinned="left", minWidth=60, flex=1, filter=False)
-    gb.configure_column("업체명", pinned="left", minWidth=120, flex=3)
+    gb.configure_column("업체명", pinned="left", minWidth=120, flex=3, tooltipField="업체명")
     gb.configure_column("총점", pinned="left", minWidth=80, flex=1.5, filter=False)
 
     gb.configure_column("수익성", pinned="left", minWidth=80, flex=1.5)
@@ -132,16 +132,17 @@ def render_restaurant_grid(display_df):
         """)
     )
 
-    gb.configure_column("비고", wrapText=True, autoHeight=True)
+    gb.configure_column("비고", wrapText=False, autoHeight=False, tooltipField="비고")
 
     gb.configure_grid_options(
         domLayout="normal",
         rowHeight=57,
+        enableBrowserTooltips=True,
     )
 
     custom_css = {
         ".ag-root-wrapper": {
-            "font-size": "clamp(12px, 1vw, 16px)",
+            "font-size": "clamp(14px, 1.1vw, 18px)",
         },
         ".ag-header-cell": {
             "display": "flex",
@@ -161,8 +162,11 @@ def render_restaurant_grid(display_df):
             "justify-content": "center",
             "align-items": "center",
             "text-align": "center",
-            "font-size": "clamp(14px, 1.2vw, 22px) !important",
+            "font-size": "clamp(16px, 1.4vw, 24px) !important",
             "font-weight": "500",
+            "overflow": "hidden",
+            "text-overflow": "ellipsis",
+            "white-space": "nowrap",
         },
         ".ag-row": {
             "height": "48px !important",
