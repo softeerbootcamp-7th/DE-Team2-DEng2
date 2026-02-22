@@ -427,7 +427,9 @@ def render_contract_management(target_sigungu):
 
     # 등급 변환 (수정 시 편의를 위해)
     display_df["주차_적합도"] = display_df["주차_적합도"].apply(parking_to_grade)
-    
+    display_df["영업_적합도"] = display_df["영업_적합도"].apply(score_to_grade)
+    display_df["수익성"] = display_df["수익성"].apply(score_to_grade)
+
     # 2. 데이터 에디터 배치
     # 사용자가 수정한 내용은 'edited_df'에 담깁니다.
     edited_df = st.data_editor(
@@ -435,7 +437,9 @@ def render_contract_management(target_sigungu):
         column_config={
             "업체명": st.column_config.Column("업체명", width=100, disabled=True),
             "도로명주소": st.column_config.Column("주소", width=200, disabled=True),
-            "총점": st.column_config.NumberColumn("점수", format="%d", width=5, disabled=True),
+            "총점": st.column_config.NumberColumn("총점", format="%d", width=5, disabled=True),
+            "수익성": st.column_config.Column("수익성", width=5, disabled=True),
+            "영업_적합도": st.column_config.Column("영업 적합도", width=5, disabled=True),
             "주차_적합도": st.column_config.SelectboxColumn(
                 "주차 적합도",
                 options=["A", "B", "C", "D", "E"],
@@ -450,7 +454,7 @@ def render_contract_management(target_sigungu):
             ),
             "remarks": st.column_config.TextColumn("비고 (특이사항)", width="large")
         },
-        column_order=["업체명", "도로명주소", "contract_status", "총점", "주차_적합도", "remarks"],
+        column_order=["업체명", "도로명주소", "contract_status", "총점", "수익성", "영업_적합도", "주차_적합도", "remarks"],
         hide_index=True,
         width="stretch",
         key="contract_batch_editor"
