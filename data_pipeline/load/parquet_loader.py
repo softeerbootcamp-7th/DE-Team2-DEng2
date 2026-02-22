@@ -54,7 +54,6 @@ class TableConfig:
     def table_name(self) -> str:
         return self.model.__tablename__
 
-
 def find_latest_year_month(root: Path) -> tuple[str, str]:
     """
     root/ 하위에서 가장 큰 year, 그 안에서 가장 큰 month를 반환
@@ -67,7 +66,27 @@ def find_latest_year_month(root: Path) -> tuple[str, str]:
     year_dir = root / f"year={year}"
 
     month = _max_partition_value(year_dir, key="month")
-    return str(year), str(month).zfill(2)
+
+    return year, month
+
+
+def find_latest_year_month_week(root: Path) -> tuple[str, str]:
+    """
+    root/ 하위에서 가장 큰 year, 그 안에서 가장 큰 month를 반환
+    폴더 이름 형식: year=2025 / month=1
+    """
+    if not root.exists():
+        raise FileNotFoundError(f"디렉토리가 존재하지 않습니다: {root}")
+
+    year = _max_partition_value(root, key="year")
+    year_dir = root / f"year={year}"
+
+    month = _max_partition_value(year_dir, key="month")
+    month_dir = year_dir / f"month={month}"
+
+    week = _max_partition_value(month_dir, key="week")
+
+    return year, month, week
 
 
 def _max_partition_value(parent: Path, key: str) -> int:
@@ -85,7 +104,7 @@ def _max_partition_value(parent: Path, key: str) -> int:
         raise FileNotFoundError(
             f"'{key}=N' 형태의 폴더를 찾을 수 없습니다: {parent}"
         )
-    return max(values)
+    return str(max(values)).zfill(2)
 
 
 def read_parquet_rows(
@@ -139,7 +158,7 @@ def read_parquet_rows(
     return rows
 
 
-# DB 적재 
+# DB 적재
 def insert_rows(
     engine: Engine,
     rows: list[dict[str, Any]],
@@ -158,7 +177,6 @@ def insert_rows(
         return 0
 
     model = config.model
-
     with Session(engine) as session:
         # 기존 snapshot 삭제
         stmt = delete(model)
