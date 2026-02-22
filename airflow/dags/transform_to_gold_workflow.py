@@ -25,6 +25,7 @@ SPARK_SUBMIT = "docker exec spark-master spark-submit"
 JOBS_DIR = "/opt/spark/jobs"
 PROJECT_DIR = "/opt/airflow/project"
 UTILS_DIR = f"{PROJECT_DIR}/data_pipeline/utils"
+LOAD_DIR = f"{PROJECT_DIR}/data_pipeline/load/restaurant"
 DATA_DIR = f"{PROJECT_DIR}/data"
 
 
@@ -123,4 +124,28 @@ with DAG(
         ),
     )
 
-    [sense_s1_toji_list, sense_s2_ownership] >> s1_to_s2 >> upload_s2 >> s2_to_gold >> upload_gold
+    # SSH 터널 시작 (컨테이너 → EC2 → RDS)
+    SCRIPTS_DIR = f"{PROJECT_DIR}/scripts"
+
+    start_tunnel = BashOperator(
+        task_id="start_ssh_tunnel",
+        bash_command=f"bash {SCRIPTS_DIR}/ssh_tunnel_rds.sh start",
+    )
+
+    # RDS 적재 - Gold → PostgreSQL
+    upload_to_rds = BashOperator(
+        task_id="upload_gold_to_rds",
+        bash_command=(
+            f"python {LOAD_DIR}/upload_to_rds.py "
+            f"--local-dir {DATA_DIR}/gold/restaurant"
+        ),
+    )
+
+    # SSH 터널 종료
+    stop_tunnel = BashOperator(
+        task_id="stop_ssh_tunnel",
+        bash_command=f"bash {SCRIPTS_DIR}/ssh_tunnel_rds.sh stop",
+        trigger_rule="all_done",
+    )
+
+    [sense_s1_toji_list, sense_s2_ownership] >> s1_to_s2 >> upload_s2 >> s2_to_gold >> upload_gold >> start_tunnel >> upload_to_rds >> stop_tunnel

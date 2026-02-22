@@ -83,6 +83,7 @@ x-airflow-common:
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
     - ~/.aws:/home/airflow/.aws:ro
+    - ~/.ssh:/home/airflow/.ssh:ro
     - /var/run/docker.sock:/var/run/docker.sock
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:

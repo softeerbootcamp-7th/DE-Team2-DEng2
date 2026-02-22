@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
+    openssh-client \
     docker-ce-cli \
     fonts-liberation \
     chromium \
@@ -45,10 +46,11 @@ USER airflow
 # --------------------------------------------------
 RUN pip install --no-cache-dir \
     pandas \
+    "pyarrow<19" \
     playwright \
     pyproj \
     python-dotenv \
-    sqlalchemy \
+    psycopg2-binary \
     alembic \
     openpyxl \
     selenium \
