@@ -1,5 +1,6 @@
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
+from pyspark.sql import Window
 import yaml
 import os
 
@@ -18,7 +19,7 @@ spark = (
     .master("spark://spark-master:7077")
     .config("spark.sql.adaptive.enabled", "true")
     .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
-    .config("spark.sql.shuffle.partitions", "200")
+    .config("spark.sql.shuffle.partitions", "40")
     .getOrCreate()
 )
 
@@ -32,6 +33,9 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as f:
 
 ROOT = cfg["data_lake"]["root"]
 LAYERS = cfg["data_lake"]["layers"]
+
+ONLY_CHANGED = cfg["option"]["crawling_list"]["only_changed"]
+CHANGED_DAYS = cfg["option"]["crawling_list"]["changed_days"]
 
 # Input Path
 restaurant_coord_src_base = os.path.join(
@@ -105,18 +109,30 @@ toji_with_0_building_df = (
 final_toji_df = toji_building_restaurant_df.unionByName(toji_with_0_building_df)
 
 # 식당이 있는 그룹만 필터
-group_has_restaurant_df = (
+# group_has_restaurant_df = (
+#     final_toji_df
+#     .groupBy("법정동명", "본번")
+#     .agg(
+#         F.max(F.when(F.col("업체명").isNotNull(), 1).otherwise(0)).alias("has_restaurant")
+#     )
+#     .filter(F.col("has_restaurant") == 1)
+#     .select("법정동명", "본번")
+# )
+
+# filtered_final_toji_df = final_toji_df.join(
+#     group_has_restaurant_df, on=["법정동명", "본번"], how="inner"
+# )
+
+w = Window.partitionBy("법정동명", "본번")
+
+filtered_final_toji_df = (
     final_toji_df
-    .groupBy("법정동명", "본번")
-    .agg(
-        F.max(F.when(F.col("업체명").isNotNull(), 1).otherwise(0)).alias("has_restaurant")
+    .withColumn(
+        "has_restaurant",
+        F.max(F.when(F.col("업체명").isNotNull(), 1).otherwise(0)).over(w)
     )
     .filter(F.col("has_restaurant") == 1)
-    .select("법정동명", "본번")
-)
-
-filtered_final_toji_df = final_toji_df.join(
-    group_has_restaurant_df, on=["법정동명", "본번"], how="inner"
+    .drop("has_restaurant")
 )
 
 # 크롤링 리스트용 그룹
@@ -126,6 +142,12 @@ toji_group_df = (
     .agg(F.min("부번").alias("부번"))
     .distinct()
 )
+
+if ONLY_CHANGED:
+    toji_group_df = (
+        toji_group_df
+        .filter(F.col("소유권변동일자") >= F.date_sub(F.current_date(),CHANGED_DAYS))
+    )
 
 # ============================================================
 # 결과 저장

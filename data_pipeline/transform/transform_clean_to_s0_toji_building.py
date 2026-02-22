@@ -1,5 +1,6 @@
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
+from pyspark.sql import Window
 import yaml
 import os
 
@@ -14,7 +15,7 @@ spark = (
     .master("spark://spark-master:7077")
     .config("spark.sql.adaptive.enabled", "true")
     .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
-    .config("spark.sql.shuffle.partitions", "400")
+    .config("spark.sql.shuffle.partitions", "40")
     .getOrCreate()
 )
 
@@ -68,23 +69,33 @@ toji_building_df = (
      .drop(F.col("b.고유번호"))
 )
 
-pk_cnt_df = (
-    toji_building_df
-    .groupBy("고유번호")
-    .agg(F.count("관리_건축물대장_PK").alias("pk_cnt"))
+w = Window.partitionBy("고유번호")
+
+toji_building_df = toji_building_df.withColumn(
+    "pk_cnt",
+    F.count("관리_건축물대장_PK").over(w)
 )
 
-toji_binary_building_df = (
-    toji_building_df
-    .join(
-        pk_cnt_df.filter(
-            (F.col("pk_cnt") == 0) | (F.col("pk_cnt") == 1)
-        ),
-        on="고유번호",
-        how="inner",
-    )
-    .drop("pk_cnt", "has_general_building")
-)
+toji_binary_building_df = toji_building_df.filter(
+    (F.col("pk_cnt") == 0) | (F.col("pk_cnt") == 1)
+).drop("pk_cnt")
+
+# pk_cnt_df = ( 
+#     toji_building_df .groupBy("고유번호") 
+#     .agg(F.count("관리_건축물대장_PK").alias("pk_cnt")) 
+# ) 
+
+# toji_binary_building_df = ( 
+#     toji_building_df 
+#     .join( 
+#         pk_cnt_df.filter( 
+#             (F.col("pk_cnt") == 0) | (F.col("pk_cnt") == 1) 
+#         ), 
+#         on="고유번호", how="inner", 
+#     ) 
+#     .drop("pk_cnt", "has_general_building") 
+# )
+
 
 # 지목 필터
 toji_binary_building_df = toji_binary_building_df.filter(
