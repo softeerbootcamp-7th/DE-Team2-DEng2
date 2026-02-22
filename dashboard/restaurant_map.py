@@ -2,7 +2,7 @@ import pandas as pd
 import pydeck as pdk
 import streamlit as st
 from st_aggrid import AgGrid, JsCode, GridOptionsBuilder, GridUpdateMode
-from core.query import update_restaurant
+from core.query import update_restaurant, load_contract_restaurants
 
 
 def score_to_grade(x):
@@ -408,3 +408,86 @@ def render_restaurant_editor(full_df):
 
                 st.session_state.save_msg = f"✅ '{target_name}' 정보 업데이트 완료!"
                 st.rerun()
+
+def render_contract_management(target_sigungu):
+    """계약 진행 중인 식당들을 리스트 형태로 보고 바로 수정하는 에디터"""
+
+    st.markdown("### 🤝 계약 및 진행 현황 관리")
+    st.caption("후보군을 제외한 '접촉, 관심, 협의, 성공, 실패' 상태의 식당들입니다.")
+
+    # 1. 데이터 로드
+    contract_df = load_contract_restaurants(target_sigungu)
+
+    if contract_df.empty:
+        st.info("해당 지역에 진행 중인 계약 건이 없습니다.")
+        return
+
+    # 표시용 데이터 정리 (원본 백업용 인덱스 유지)
+    display_df = contract_df.copy()
+
+    # 등급 변환 (수정 시 편의를 위해)
+    display_df["주차_적합도"] = display_df["주차_적합도"].apply(parking_to_grade)
+    
+    # 2. 데이터 에디터 배치
+    # 사용자가 수정한 내용은 'edited_df'에 담깁니다.
+    edited_df = st.data_editor(
+        display_df,
+        column_config={
+            "업체명": st.column_config.Column("업체명", width=100, disabled=True),
+            "도로명주소": st.column_config.Column("주소", width=200, disabled=True),
+            "총점": st.column_config.NumberColumn("점수", format="%d", width=5, disabled=True),
+            "주차_적합도": st.column_config.SelectboxColumn(
+                "주차 적합도",
+                options=["A", "B", "C", "D", "E"],
+                width=5,
+                required=True
+            ),
+            "contract_status": st.column_config.SelectboxColumn(
+                "진행 상태",
+                options=["후보", "접촉", "관심", "협의", "성공", "실패"],
+                width=5,
+                required=True
+            ),
+            "remarks": st.column_config.TextColumn("비고 (특이사항)", width="large")
+        },
+        column_order=["업체명", "도로명주소", "contract_status", "총점", "주차_적합도", "remarks"],
+        hide_index=True,
+        width="stretch",
+        key="contract_batch_editor"
+    )
+
+    # 3. 저장 버튼 로직
+    col1, col2 = st.columns([8, 2])
+    with col2:
+        save_btn = st.button("💾 변경사항 일괄 저장", use_container_width=True, type="primary")
+
+    if save_btn:
+        grade_to_score = {"A": 5, "B": 4, "C": 3, "D": 2, "E": 1}
+        updated_count = 0
+        
+        with st.spinner("DB 반영 중..."):
+            # 기존 데이터(display_df)와 수정된 데이터(edited_df)를 비교하여 변경된 것만 처리
+            # (또는 간단하게 전체 루프를 돌며 업데이트)
+            for idx in range(len(edited_df)):
+                row = edited_df.iloc[idx]
+                orig_row = display_df.iloc[idx]
+                
+                # 실제로 값이 변경되었는지 체크 (성능 최적화)
+                if (row["contract_status"] != orig_row["contract_status"] or 
+                    row["주차_적합도"] != orig_row["주차_적합도"] or 
+                    row["remarks"] != orig_row["remarks"]):
+                    
+                    update_restaurant(
+                        name=row["업체명"],
+                        address=row["도로명주소"],
+                        access=grade_to_score.get(row["주차_적합도"], 3),
+                        status=row["contract_status"],
+                        remarks=None if (pd.isna(row["remarks"]) or str(row["remarks"]).strip() == "") else row["remarks"]
+                    )
+                    updated_count += 1
+            
+            if updated_count > 0:
+                st.success(f"{updated_count}건의 정보가 업데이트되었습니다!")
+                st.rerun()
+            else:
+                st.warning("변경사항이 없습니다.")

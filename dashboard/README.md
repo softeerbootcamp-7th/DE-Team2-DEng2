@@ -1,113 +1,44 @@
 # 🚚 DEng2 Dashboard
 
-화물차주 분포 데이터와 식당 후보지를 지도 기반으로 시각화하고,  
-식당 단위 계약 상태를 관리하는 Streamlit 대시보드입니다.
+화물차주 분포 데이터와 야간주차 식당 후보지를 지도 기반으로 시각화하고,  
+식당과의 계약 상태를 관리하는 대시보드입니다.
 
 ## 📁 디렉토리 구조
 ```
 dashboard/
-├── app.py                 # Streamlit 메인 엔트리포인트
-├── chajoo_heatmap.py      # 화물차주 분포 히트맵 페이지
-├── restaurant_map.py      # 식당 지도 및 상태 관리 페이지
-├── dashboard.md           # 대시보드 설명 문서
-│
-├── core/
-│   ├── db.py              # DB 엔진/세션 생성
-│   ├── query.py           # SQL 쿼리 모음 (데이터 조회 전용)
-│   └── settings.py        # 공통 설정값
-│
-└── data/
-    └── sigungu_shp/
-        ├── bnd_sigungu_00.shp
-        ├── bnd_sigungu_00.shx
-        ├── bnd_sigungu_00.dbf
-        └── bnd_sigungu_00.prj
+├── 0_🍽️_식당_주차장_관리.py    # 메인 대시보드 진입점 (식당 주차장 관리 화면)
+├── chajoo_map.py               # 차주 관련 지도 시각화 컴포넌트
+├── restaurant_map.py           # 식당 위치 및 정보 지도 시각화 컴포넌트
+├── shp_loader.py               # SHP (Parquet) 데이터 로드 유틸리티
+├── core/                       # DB 세션 관리 및 시스템 환경 설정을 위한 공통 컴포넌트
+│   ├── db.py                   # 데이터베이스 연결 및 세션 관리
+│   ├── query.py                # SQL 쿼리 정의 및 데이터 추출 로직
+│   └── settings.py             # 환경 변수 및 전역 설정값 관리
+├── data/                       # 데이터 리소스 관리
+│   └── shp.parquet             # 경량화된 SHP 지리 정보 데이터 (Parquet 형식)
+└── pages/                      # Streamlit 멀티 페이지 구성
+    └── 1_🚛_차주_수요_분석.py  # 서브 페이지: 차주 분포 분석 및 전략 거점 선정을 위한 페이지
 ```
 
+## Prerequisite: 행정구역 경계 데이터 (SHP → Parquet)
 
-## Prerequisite: 행정구역 경계 데이터 (SHP)
-지도 렌더링을 위해 아래 경로에 센서스용 행정구역 경계 파일이 반드시 존재해야 합니다.
-* **권장 경로**: `dashboard/data/sigungu_shp/`
-* **필요 파일**: `bnd_sigungu_00` 관련 파일 (.shp, .shx, .dbf 등)
-* **다운로드**: [SGIS 통계지리정보서비스](https://sgis.kostat.go.kr)
+본 대시보드는 **SGIS 센서스용 행정구역 경계 SHP 데이터를 Parquet 형식으로 변환한 파일**을 사용합니다.  
+원본 SHP 파일을 그대로 사용하지 않으며, **사전에 Parquet로 변환하여 `dashboard/data/` 하위에 저장되어 있어야 합니다.**
 
-
-## 📌 파일별 역할 정리
-
-### `app.py`
-- Streamlit **진입점**
-- 사이드바 메뉴 구성
-- 페이지 라우팅 담당
-- 실제 데이터 로직은 포함하지 않음
-
-역할 요약:
-- UI 진입
-- 페이지 선택
-- 전체 앱 흐름 제어
-
----
-
-### `chajoo_heatmap.py`
-- 화물차주(영업용 차량) 분포 히트맵 시각화
-- 시도 / 시군구 단위 집계 데이터 사용
-- PyDeck + Mapbox 기반 지도 렌더링
-
-주요 기능:
-- 지역 선택 필터
-- 행정구역 폴리곤 색상 표현
-- Tooltip을 통한 수치 정보 제공
-
----
-
-### `restaurant_map.py`
-- 식당 위치 기반 지도 시각화
-- 개별 식당 클릭 시 상태 수정 UI 제공
-- DB와 직접 연동하여 상태 즉시 반영
-
-관리 상태 예시:
-- 미입력
-- 후보
-- 연락 시도
-- 계약 성공
-- 계약 실패
-
-
-## 🧩 core 모듈 설명
-
-### `core/db.py`
-- DB 연결 전담 모듈
-- SQLAlchemy Engine 생성
-- 앱 전체에서 공통으로 사용
-
-책임:
-- DB 연결 방식 통일
-- 환경별(DB URL) 변경 대응
-
----
-
-### `core/query.py`
-- **모든 SQL 쿼리 집합**
-- UI 코드에서 SQL 직접 작성하지 않기 위한 분리 계층
-
-역할:
-- 화물차주 통계 조회
-- 식당 목록 조회
-- 식당 상태 조회/업데이트용 쿼리 제공
-
-
----
-
-### `core/settings.py`
-- 설정값 중앙 관리
-- 환경변수, 경로, 상수 정의
-
-예시:
-- SHP 파일 경로
+### 1) 원본 SHP 데이터 다운로드
+* **출처**: https://sgis.kostat.go.kr
+* **데이터**: 시군구 행정구역 경계 (`bnd_sigungu_00`)
+* **필요 파일**:
+  - `bnd_sigungu_00.cpg`
+  - `bnd_sigungu_00.dbf`
+  - `bnd_sigungu_00.prj`
+  - `bnd_sigungu_00.shp`
+  - `bnd_sigungu_00.shx`
 
 ## ⚙️ 실행 방법
 
 ```bash
-streamlit run dashboard/app.py
+streamlit run dashboard/0_🍽️_식당_주차장_관리.py
 ```
 
 ## 🗄️ 데이터베이스 요구사항 (필수 테이블)
@@ -115,7 +46,7 @@ streamlit run dashboard/app.py
 본 대시보드는 PostgreSQL 데이터베이스와 연동되며,  
 아래 테이블들이 **사전에 생성되어 있어야 정상 동작**합니다.
 
-### 1. `public.chajoo_dist`
+### 1. `chajoo_dist`
 화물차주(영업용 차량) 분포 통계 테이블  
 히트맵 시각화에 사용됩니다.
 
@@ -123,43 +54,40 @@ streamlit run dashboard/app.py
 |------|------|------|
 | sido | text | 시도명 |
 | sigungu | text | 시군구명 |
-| cargo_sales_count | bigint | 화물차주 수 |
+| cargo_count | bigint | 화물차주 수 |
 | SHP_CD | text | 행정구역 코드 (SHP 매핑용) |
+| 전략적_중요도 | double precision | 화물차주 인구수를 기반으로 산출한 사업 우선순위 지표 
 | year | text | 연도 |
 | month | text | 월 |
 
 ---
 
-### 2. `public.restaurant_master`
+### 2. `restaurant`
 식당 기본 정보 및 입지 분석 결과 테이블  
-식당 지도 렌더링의 **기본 데이터 소스**입니다.
+식당 지도 렌더링 및 계약 관리의 **기본 데이터 소스**입니다.
 
 | 컬럼명 | 타입 | 설명 |
-|------|------|------|
-| 법정동명 | text | 법정동명 |
-| 본번 | bigint | 지번 본번 |
-| 지주 | text | 지목 |
-| 부번 | double precision | 지번 부번 |
-| PNU코드 | bigint | 토지 고유 식별자 |
-| 도로명주소 | text | 도로명 주소 (PK 구성) |
-| 업체명 | text | 식당명 (PK 구성) |
-| 대표자 | text | 대표자명 |
-| min_유휴부지면적 | double precision | 최소 유휴부지 면적 |
-| 유휴부지면적 | double precision | 유휴부지 면적 |
-| 신뢰도점수 | double precision | 입지 신뢰도 점수 |
+|--------|------------------|--------------------------------------------|
+| sigungu | text | 시군구명 |
+| 총점 | double precision | 입지 종합 평가 점수 |
+| 영업_적합도 | double precision | 영업 지속 가능성 및 상권 적합도 점수 |
+| 수익성 | double precision | 예상 수익성 평가 점수 |
+| 업체명 | text | 식당명 (PK 구성 요소) |
+| 도로명주소 | text | 도로명 주소 (PK 구성 요소) |
+| 유휴부지_면적 | double precision | 추정 유휴 부지 면적 |
 | longitude | double precision | 경도 |
 | latitude | double precision | 위도 |
-| year | text | 연도 |
-| month | text | 월 |
-| region | text | 시도 |
-| sigungu | text | 시군구 |
-
-**Indexes**
-- Primary Key: (`업체명`, `도로명주소`)
+| year | integer | 데이터 수집 연도 |
+| month | integer | 데이터 수집 월 |
+| week | integer | 데이터 수집 주차 |
+| region | text | 시도명 |
+| 주차_적합도 | integer | 대형 차량 진입 및 회차 가능성 점수 |
+| contract_status | text | 계약 진행 상태 ("후보", "접촉", "관심", "협의", "성공", "실패") |
+| remarks | text | 비고 및 계약 메모 |
 
 ---
 
-### 3. `public.restaurant_status`
+### 3. `restaurant_status`
 식당 계약 및 접근성 상태 관리 테이블  
 대시보드 UI에서 **사용자 입력으로 갱신**됩니다.
 

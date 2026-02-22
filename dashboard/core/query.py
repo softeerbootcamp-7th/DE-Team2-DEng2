@@ -92,6 +92,51 @@ def load_restaurants(target_sigungu: str):
 
     return df
 
+def load_contract_restaurants(target_sigungu: str):
+    tokens = target_sigungu.split()
+    if not tokens: return pd.DataFrame()
+
+    region_val = tokens[0].strip()
+    sigungu_val = " ".join(tokens[1:]).strip()
+
+    # 💡 WHERE 절에 후보 제외 조건을 추가하고 ORDER BY와 LIMIT을 제거했습니다.
+    query = text("""
+    WITH latest_date AS (
+        SELECT year, month, week
+        FROM restaurant
+        WHERE region = :region
+        ORDER BY year DESC, month DESC, week DESC
+        LIMIT 1
+    )
+    SELECT
+        m."업체명",
+        m."도로명주소",
+        m.latitude,
+        m.longitude,
+        m."총점",
+        m."수익성",
+        m."영업_적합도",
+        m."주차_적합도",
+        m."유휴부지_면적",
+        m.contract_status,
+        m.remarks,
+        m.year, m.month, m.week
+    FROM restaurant m
+    INNER JOIN latest_date ld ON 
+        m.year = ld.year AND 
+        m.month = ld.month AND 
+        m.week = ld.week
+    WHERE
+        m.region = :region
+        AND m.sigungu LIKE :sigungu
+        AND m.contract_status != '후보'  -- '후보' 상태인 항목 제외
+    """)
+
+    with get_engine().connect() as conn:
+        df = pd.read_sql(query, conn, params={"region": region_val, "sigungu": f"%{sigungu_val}%"})
+
+    return df
+
 # --- 업데이트 함수 ---
 def update_restaurant(name, address, access, status, remarks):
     engine = get_engine()

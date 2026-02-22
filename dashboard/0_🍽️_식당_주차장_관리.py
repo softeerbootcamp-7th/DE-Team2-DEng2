@@ -4,8 +4,8 @@ import geopandas as gpd
 import streamlit as st
 from dotenv import load_dotenv
 
-from core.query import load_restaurants, get_last_viewed_sigungu, save_view_history, load_chajoo_data
-from restaurant_map import render_restaurant_editor, render_restaurant_map, render_restaurant_grid
+from core.query import load_restaurants, get_last_viewed_sigungu, save_view_history, load_chajoo_data, load_contract_restaurants
+from restaurant_map import render_restaurant_editor, render_restaurant_map, render_restaurant_grid, render_contract_management
 
 from shp_loader import load_shp
 
@@ -201,7 +201,7 @@ def main():
             """, unsafe_allow_html=True)
 
         with map_header_col2:
-            
+
             st.markdown("""
                     <style>
                     /* 토글 텍스트 - 반응형 */
@@ -237,7 +237,7 @@ def main():
 
     # 에디터는 세션의 "editing_data"를 그림
     render_restaurant_editor(df)
-
+    render_contract_management(TARGET_SIGUNGU)
 
 if __name__ == "__main__":
     main()
