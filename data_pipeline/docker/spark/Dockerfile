@@ -31,7 +31,8 @@ RUN uv pip install --system --no-cache-dir \
     pyarrow \
     jupyterlab \
     matplotlib \
-    seaborn 
+    seaborn \
+    pyproj
 
 ENV PYSPARK_PYTHON=python3
 ENV PYSPARK_DRIVER_PYTHON=python3

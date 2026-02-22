@@ -4,8 +4,8 @@ import pandas as pd
 from pathlib import Path
 
 # 경로
-SRC_DIR = Path("./data/bronze/address/_work/unzipped")
-DST_BASE = Path("./data/bronze/address/parquet")
+SRC_DIR = Path("./data/bronze/coord/_work/unzipped")
+DST_BASE = Path("./data/bronze/coord/parquet")
 DST_BASE.mkdir(parents=True, exist_ok=True)
 
 # =========================================================
@@ -21,7 +21,6 @@ last_day_prev_month = first_day_this_month - dt.timedelta(days=1)
 
 YEAR = last_day_prev_month.year
 MONTH = f"{last_day_prev_month.month:02d}"
-
 
 # =========================================================
 # region 영어 → 한글 매핑
@@ -50,30 +49,24 @@ REGION_MAP = {
 # 컬럼
 # =========================================================
 FULL_COLUMNS = [
-    "도로명주소관리번호",
+    "시군구코드",
+    "출입구일련번호",
     "법정동코드",
     "시도명",
     "시군구명",
-    "법정읍면동명",
-    "법정리명",
-    "산여부",
-    "지번본번(번지)",
-    "지번부번(호)",
+    "읍면동명",
     "도로명코드",
     "도로명",
     "지하여부",
     "건물본번",
     "건물부번",
-    "행정동코드",
-    "행정동명",
-    "기초구역번호(우편번호)",
-    "이전도로명주소",
-    "효력발생일",
-    "공동주택구분",
-    "이동사유코드",
-    "건축물대장건물명",
-    "시군구용건물명",
-    "비고",
+    "건물명",
+    "우편번호",
+    "건물용도분류",
+    "건물군여부",
+    "관할행정동",
+    "X좌표",
+    "Y좌표"
 ]
 
 # =========================================================
@@ -102,7 +95,7 @@ def read_korean_txt(path: Path) -> pd.DataFrame:
 # rnaddrkor_gyunggi.txt
 # =========================================================
 def extract_region_from_filename(name: str) -> str:
-    m = re.match(r"rnaddrkor_(.+)\.txt$", name.lower())
+    m = re.match(r"entrc_(.+)\.txt$", name.lower())
     if not m:
         raise ValueError(f"파일명 형식 이상: {name}")
 
