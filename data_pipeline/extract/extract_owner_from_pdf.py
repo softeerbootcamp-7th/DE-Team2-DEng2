@@ -3,6 +3,7 @@ import re
 import csv
 import sys
 from pathlib import Path
+from datetime import datetime
 from multiprocessing import Pool, cpu_count
 
 import pandas as pd
@@ -148,14 +149,15 @@ def main():
         print("❌ pdf 폴더 경로가 존재하지 않음:", pdf_root)
         sys.exit(1)
 
-    csv_output_dir = pdf_root.parent / "output_ocr"
-    csv_output_dir.mkdir(exist_ok=True)
+    # 프로젝트 루트: extract_owner_from_pdf.py → extract/ → data_pipeline/ → 프로젝트 루트
+    project_root = Path(__file__).resolve().parent.parent.parent
 
-    parquet_output_dir = pdf_root.parent.parent / "parquet"
-    parquet_output_dir.mkdir(exist_ok=True)
+    output_dir = project_root / "data" / "silver" / "s2" / "ownership_inference"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_path = csv_output_dir / "ocr_result.csv"
-    parquet_path = parquet_output_dir / "ocr_result.parquet"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_path = output_dir / f"ocr_result_{timestamp}.csv"
+    parquet_path = output_dir / f"ocr_result_{timestamp}.parquet"
 
     pdf_files = list(pdf_root.rglob("*.pdf"))
 

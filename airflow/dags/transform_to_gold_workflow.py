@@ -2,6 +2,7 @@ import os
 import sys
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+from airflow.sensors.python import PythonSensor
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -13,6 +14,8 @@ try:
     from data_pipeline.utils.slack_utils import SlackNotifier
 except ImportError as e:
     print(f"Import Error: {e}")
+
+from utils.sensor_helpers import check_parquet_exists, check_success_marker
 
 # ==========================================================
 # S2 → Gold
@@ -51,7 +54,7 @@ def slack_success_callback(context):
 
 default_args = {
     "owner": "DE-Team2",
-    "retries": 0,
+    "retries": 1,
     "retry_delay": timedelta(minutes=10),
     "on_failure_callback": slack_failure_callback,
 }
@@ -60,11 +63,30 @@ with DAG(
     dag_id="transform_to_gold",
     default_args=default_args,
     description="S2 → Gold (ownership_inference 크롤링 완료 후 실행)",
-    schedule=None, 
+    schedule="@daily",
     start_date=datetime(2026, 2, 1),
     catchup=False,
-    tags=["manual", "transform", "gold"],
+    tags=["daily", "transform", "gold"],
 ) as dag:
+
+    # Sensors: S1/S2 입력 데이터 존재 확인
+    sense_s1_toji_list = PythonSensor(
+        task_id="sense_s1_toji_list",
+        python_callable=check_success_marker,
+        op_kwargs={"base_path": "silver/s1/toji_list", "partition_type": "year_month_week"},
+        poke_interval=1800,
+        timeout=172800,
+        mode="reschedule",
+    )
+
+    sense_s2_ownership = PythonSensor(
+        task_id="sense_s2_ownership",
+        python_callable=check_parquet_exists,
+        op_kwargs={"base_path": "silver/s2/ownership_inference", "partition_type": "year_month_week"},
+        poke_interval=1800,
+        timeout=172800,
+        mode="reschedule",
+    )
 
     # Phase 1: S1 + ownership_inference → S2
     s1_to_s2 = BashOperator(
@@ -80,7 +102,7 @@ with DAG(
 
     # S3 업로드 - S2
     upload_s2 = BashOperator(
-        task_id="upload_s2_to_s3",
+        task_id="upload_s2_to_datalake",
         bash_command=(
             f"python {UTILS_DIR}/upload_data_to_s3.py "
             f"--local-dir {DATA_DIR}/silver/s2 "
@@ -91,7 +113,7 @@ with DAG(
 
     # S3 업로드 - Gold
     upload_gold = BashOperator(
-        task_id="upload_gold_to_s3",
+        task_id="upload_gold_to_datalake",
         bash_command=(
             f"python {UTILS_DIR}/upload_data_to_s3.py "
             f"--local-dir {DATA_DIR}/gold/restaurant "
@@ -101,4 +123,4 @@ with DAG(
         on_success_callback=slack_success_callback,
     )
 
-    s1_to_s2 >> upload_s2 >> s2_to_gold >> upload_gold
+    [sense_s1_toji_list, sense_s2_ownership] >> s1_to_s2 >> upload_s2 >> s2_to_gold >> upload_gold
