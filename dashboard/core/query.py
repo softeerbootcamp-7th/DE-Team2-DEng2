@@ -154,11 +154,11 @@ def save_view_history(sigungu):
 
     # f-string 대신 파라미터 바인딩(:sigungu)을 사용하는 것이 보안상 더 안전합니다.
     query = text("""
-        INSERT INTO user_view_history (id, sigungu, viewed_at)
+        INSERT INTO user_view_history (id, sigungu, updated_at)
         VALUES (1, :sigungu, CURRENT_TIMESTAMP)
         ON CONFLICT (id) DO UPDATE 
         SET sigungu = EXCLUDED.sigungu,
-            viewed_at = CURRENT_TIMESTAMP;
+            updated_at = CURRENT_TIMESTAMP;
     """)
 
     with engine.begin() as conn:
