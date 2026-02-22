@@ -4,7 +4,7 @@ import geopandas as gpd
 import streamlit as st
 from dotenv import load_dotenv
 
-from core.query import load_restaurants, get_last_viewed_sigungu, save_view_history, load_chajoo_data, load_contract_restaurants
+from core.query import load_restaurants, get_last_viewed_sigungu, save_view_history, load_chajoo_data
 from restaurant_map import render_restaurant_editor, render_restaurant_map, render_restaurant_grid, render_contract_management
 
 from shp_loader import load_shp
@@ -26,67 +26,22 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-    /* 사이드바 네비게이션 */
+    /* 1. 사이드바 페이지 네비게이션 링크 전체 글자 크기 */
     [data-testid="stSidebarNav"] span {
         font-size: 20px !important;
         font-weight: 600 !important;
     }
+
+    /* 2. (선택사항) 아이콘 크기도 같이 키우고 싶을 경우 */
     [data-testid="stSidebarNav"] svg {
         width: 24px !important;
         height: 24px !important;
     }
+
+    /* 3. 각 항목 사이의 간격을 넓히고 싶을 경우 */
     [data-testid="stSidebarNav"] li {
         padding-top: 5px !important;
         padding-bottom: 5px !important;
-    }
-
-    /* ── 반응형 디자인 ── */
-
-    /* 좁은 화면: 그리드+지도 세로 스택 */
-    @media (max-width: 1000px) {
-        [data-testid="stHorizontalBlock"] {
-            flex-direction: column !important;
-        }
-        [data-testid="stHorizontalBlock"] > div {
-            width: 100% !important;
-            flex: 1 1 100% !important;
-        }
-    }
-
-    /* 작은 화면 폰트 축소 */
-    @media (max-width: 1200px) {
-        .ag-header-cell-label {
-            font-size: 14px !important;
-        }
-        .ag-cell {
-            font-size: 14px !important;
-        }
-        [data-testid="stSidebarNav"] span {
-            font-size: 16px !important;
-        }
-        div[data-testid="stWidgetLabel"] p {
-            font-size: 16px !important;
-        }
-    }
-
-    /* 중간 화면 */
-    @media (min-width: 1201px) and (max-width: 1600px) {
-        .ag-header-cell-label {
-            font-size: 17px !important;
-        }
-        .ag-cell {
-            font-size: 18px !important;
-        }
-    }
-
-    /* PyDeck 지도 반응형 높이 */
-    iframe[title="pydeck_chart"] {
-        max-height: 70vh !important;
-    }
-
-    /* AgGrid 반응형 높이 */
-    .ag-root-wrapper {
-        max-height: 65vh !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -188,15 +143,11 @@ def main():
         render_restaurant_grid(df)
 
     with col_map:
-        map_header_col1, map_header_col2 = st.columns([7, 3])
+        map_header_col1, map_header_col2 = st.columns([8, 3])
         with map_header_col1:
             st.markdown(f"""
-                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <h3 style="margin: 0; font-size: clamp(16px, 1.5vw, 24px);">📍 위치 및 접근성 확인</h3>
-                    <div style="display: flex; align-items: center; color: #6c757d; font-size: clamp(11px, 0.9vw, 14px);">
-                        <span style="margin-right: 4px;">🖱️</span>
-                        <span><b>리스트 클릭 시</b> 해당 위치로 지도가 이동합니다.</span>
-                    </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h3 style="margin: 0;">📍 위치 및 접근성 확인</h3>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -204,21 +155,16 @@ def main():
 
             st.markdown("""
                     <style>
-                    /* 토글 텍스트 - 반응형 */
+                    /* 1. 토글 옆의 텍스트 크기 키우기 */
                     div[data-testid="stWidgetLabel"] p {
-                        font-size: clamp(12px, 1vw, 16px) !important;
+                        font-size: 22px !important;
                         font-weight: 700 !important;
                         color: #ffffff !important;
                     }
+
                     div[data-testid="stCheckbox"] > label > div:first-child {
-                        transform: scale(1.3);
-                        margin-right: 10px;
-                    }
-                    @media (max-width: 1200px) {
-                        div[data-testid="stCheckbox"] > label > div:first-child {
-                            transform: scale(1.0);
-                            margin-right: 6px;
-                        }
+                        transform: scale(1.5);
+                        margin-right: 15px;
                     }
                     </style>
                 """, unsafe_allow_html=True)
