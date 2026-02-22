@@ -68,18 +68,19 @@ def render_restaurant_grid(display_df):
     gb.configure_default_column(editable=False, resizable=True)
     gb.configure_selection(selection_mode="single", use_checkbox=False)
 
-    gb.configure_column("순위", pinned="left", width=80, filter=False)
-    gb.configure_column("업체명", pinned="left", width=250) 
-    gb.configure_column("총점", pinned="left", width=120, filter=False)
+    gb.configure_column("순위", pinned="left", minWidth=60, flex=1, filter=False)
+    gb.configure_column("업체명", pinned="left", minWidth=120, flex=3)
+    gb.configure_column("총점", pinned="left", minWidth=80, flex=1.5, filter=False)
 
-    gb.configure_column("수익성", pinned="left", width=120)
-    gb.configure_column("영업 적합도", pinned="left", width=120)
-    gb.configure_column("주차 적합도", pinned="left", width=120)
+    gb.configure_column("수익성", pinned="left", minWidth=80, flex=1.5)
+    gb.configure_column("영업 적합도", pinned="left", minWidth=80, flex=1.5)
+    gb.configure_column("주차 적합도", pinned="left", minWidth=80, flex=1.5)
 
     gb.configure_column(
         "진행 상태",
         pinned="left",
-        width=130,
+        minWidth=90,
+        flex=1.5,
         filter="agSetColumnFilter",
         cellStyle=JsCode("""
             function(params) {
@@ -141,7 +142,7 @@ def render_restaurant_grid(display_df):
 
     custom_css = {
         ".ag-root-wrapper": {
-            "font-size": "16px",
+            "font-size": "clamp(12px, 1vw, 16px)",
         },
         ".ag-header-cell": {
             "display": "flex",
@@ -150,7 +151,7 @@ def render_restaurant_grid(display_df):
             "text-align": "center",
         },
         ".ag-header-cell-label": {
-            "font-size": "20px !important",
+            "font-size": "clamp(14px, 1.1vw, 20px) !important",
             "font-weight": "800 !important",
             "justify-content": "center",
             "width": "100%",
@@ -161,7 +162,7 @@ def render_restaurant_grid(display_df):
             "justify-content": "center",
             "align-items": "center",
             "text-align": "center",
-            "font-size": "22px !important",
+            "font-size": "clamp(14px, 1.2vw, 22px) !important",
             "font-weight": "500",
         },
         ".ag-row": {

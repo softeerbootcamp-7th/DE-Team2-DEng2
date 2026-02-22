@@ -20,22 +20,62 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-    /* 1. 사이드바 페이지 네비게이션 링크 전체 글자 크기 */
+    /* 사이드바 네비게이션 */
     [data-testid="stSidebarNav"] span {
         font-size: 20px !important;
         font-weight: 600 !important;
     }
-
-    /* 2. (선택사항) 아이콘 크기도 같이 키우고 싶을 경우 */
     [data-testid="stSidebarNav"] svg {
         width: 24px !important;
         height: 24px !important;
     }
-
-    /* 3. 각 항목 사이의 간격을 넓히고 싶을 경우 */
     [data-testid="stSidebarNav"] li {
         padding-top: 5px !important;
         padding-bottom: 5px !important;
+    }
+
+    /* ── 반응형 디자인 ── */
+
+    @media (max-width: 1000px) {
+        [data-testid="stHorizontalBlock"] {
+            flex-direction: column !important;
+        }
+        [data-testid="stHorizontalBlock"] > div {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+    }
+
+    @media (max-width: 1200px) {
+        .ag-header-cell-label {
+            font-size: 14px !important;
+        }
+        .ag-cell {
+            font-size: 14px !important;
+        }
+        [data-testid="stSidebarNav"] span {
+            font-size: 16px !important;
+        }
+        div[data-testid="stWidgetLabel"] p {
+            font-size: 16px !important;
+        }
+    }
+
+    @media (min-width: 1201px) and (max-width: 1600px) {
+        .ag-header-cell-label {
+            font-size: 17px !important;
+        }
+        .ag-cell {
+            font-size: 18px !important;
+        }
+    }
+
+    iframe[title="pydeck_chart"] {
+        max-height: 70vh !important;
+    }
+
+    .ag-root-wrapper {
+        max-height: 65vh !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -61,25 +101,28 @@ def main():
 
         with col_right:
             # 지도 상단 헤더 공간 (제목과 토글 분리)
-            map_header_left, map_header_right = st.columns([8, 2.3])
+            map_header_left, map_header_right = st.columns([7, 3])
             with map_header_left:
                 st.subheader("📍 전국 밀집도 지표")
             with map_header_right:
                 # ✅ 고유 key를 부여하여 리런 시에도 상태가 유지되도록 설정
                 st.markdown("""
                     <style>
-                    /* 1. 토글 옆의 텍스트 크기 키우기 */
+                    /* 토글 텍스트 - 반응형 */
                     div[data-testid="stWidgetLabel"] p {
-                        font-size: 22px !important;
+                        font-size: clamp(12px, 1vw, 16px) !important;
                         font-weight: 700 !important;
                         color: #ffffff !important;
                     }
-
-                    /* 2. 토글 스위치 자체의 크기 키우기 (선택 사항) */
-                    /* 스위치 전체적인 높이와 너비 조절 */
                     div[data-testid="stCheckbox"] > label > div:first-child {
-                        transform: scale(1.5); /* 1.5배 확대 */
-                        margin-right: 15px;    /* 텍스트와의 간격 확보 */
+                        transform: scale(1.3);
+                        margin-right: 10px;
+                    }
+                    @media (max-width: 1200px) {
+                        div[data-testid="stCheckbox"] > label > div:first-child {
+                            transform: scale(1.0);
+                            margin-right: 6px;
+                        }
                     }
                     </style>
                 """, unsafe_allow_html=True)
@@ -100,24 +143,19 @@ def main():
                 # 🎨 커스텀 스타일 적용 (높이 증가, 글씨 크기 확대, 너비 제한)
                 st.markdown(f"""
                     <style>
-                    /* 버튼 자체의 높이와 스타일 */
                     div.stButton > button {{
-                        height: 100px !important;
+                        height: clamp(60px, 8vh, 100px) !important;
                         width: 100% !important;
                         border-radius: 20px !important;
                         background-color: #FF4B4B !important;
                         border: none !important;
                         transition: all 0.3s ease !important;
                     }}
-
-                    /* 버튼 안의 텍스트 크기를 강제로 키움 🚀 */
                     div.stButton > button p {{
-                        font-size: 30px !important;
+                        font-size: clamp(18px, 2vw, 30px) !important;
                         font-weight: 800 !important;
                         color: white !important;
                     }}
-
-                    /* 마우스 올렸을 때 효과 */
                     div.stButton > button:hover {{
                         transform: scale(1.05) !important;
                         background-color: #FF3333 !important;

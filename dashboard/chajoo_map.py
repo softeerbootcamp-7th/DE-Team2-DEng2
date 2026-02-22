@@ -68,12 +68,13 @@ def render_chajoo_grid(merged_df):
     gb.configure_selection(selection_mode="single", use_checkbox=False)
 
 
-    gb.configure_column("순위", width=90, pinned="left", cellStyle={'text-align': 'center'}, filter=False)
-    gb.configure_column("시도", width=120, pinned="left")
-    gb.configure_column("시군구", width=180, pinned="left")
+    gb.configure_column("순위", minWidth=60, flex=1, pinned="left", cellStyle={'text-align': 'center'}, filter=False)
+    gb.configure_column("시도", minWidth=80, flex=1.5, pinned="left")
+    gb.configure_column("시군구", minWidth=100, flex=2, pinned="left")
     gb.configure_column(
         "전략적 중요도",
-        width=160,
+        minWidth=100,
+        flex=2,
         type=["numericColumn", "numberColumnFilter"],
         valueFormatter="Math.floor(value * 100) / 100",
         filter=False
@@ -83,30 +84,27 @@ def render_chajoo_grid(merged_df):
 
     # 🎨 글꼴 크기 대폭 확대 및 볼드체 강조
     custom_css = {
-        # 헤더 글씨 키우기
         ".ag-header-cell": {
             "display": "flex",
-            "justify-content": "center",   # 🔥 가로 중앙
-            "align-items": "center",       # 🔥 세로 중앙
+            "justify-content": "center",
+            "align-items": "center",
             "text-align": "center",
         },
         ".ag-header-cell-label": {
-            "font-size": "20px !important",
+            "font-size": "clamp(14px, 1.1vw, 20px) !important",
             "font-weight": "800 !important",
             "justify-content": "center",
             "width": "100%",
             "text-align": "center",
         },
-        # 본문 셀 글씨 키우기
         ".ag-cell": {
             "justify-content": "center",
             "align-items": "center",
-            "font-size": "22px !important", 
+            "font-size": "clamp(14px, 1.2vw, 22px) !important",
             "font-weight": "500",
-            "display": "flex", 
+            "display": "flex",
             "align-items": "center"
         },
-        # 선택된 행 강조 (선택 사항)
         ".ag-row-selected": {
             "background-color": "#2c3e50 !important",
             "border": "2px solid #00d4ff !important"
