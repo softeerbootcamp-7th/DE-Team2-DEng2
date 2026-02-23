@@ -65,7 +65,8 @@
 
 Airflow 기반 ETL 파이프라인을 통해 데이터를 주기적으로 수집, 정제, 적재합니다.
 
-<img width="3885" height="2466" alt="image" src="https://github.com/user-attachments/assets/c62fad9b-16e1-41f1-93e6-96932ac94c5c" />
+<img width="3885" height="2466" alt="image" src="https://github.com/user-attachments/assets/a76da393-40cc-4529-9f05-f7a4bb7b89b1" />
+
 
 
 ## Data Lake Architecture (Medallion Pattern)
