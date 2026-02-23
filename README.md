@@ -1,8 +1,11 @@
 # Softeer Bootcamp 7th - DE Team2-DEng2
 
-## 🚛 Teum: 화물차주를 위한 식당 야간 주차장 추천 서비스
+## 🚛 [Teum](http://13.125.181.228:8501/): 화물차주를 위한 식당 야간 주차장 추천 서비스
 
 식당이 소유한 유휴 부지를 분석하여, 신규 화물차 주차용 부지를 찾고 있는 사업자(트럭헬퍼) 영업부서에게 최적의 on-demand 주차 장소를 추천하는 데이터 엔지니어링 프로젝트입니다.
+
+<img width="3456" height="1991" alt="image" src="https://github.com/user-attachments/assets/ab7da58b-5df1-47be-a652-e71f8d8cf989" />
+
 
 ---
 
@@ -62,7 +65,7 @@
 
 Airflow 기반 ETL 파이프라인을 통해 데이터를 주기적으로 수집, 정제, 적재합니다.
 
-![image alt][reference]
+<img width="3885" height="2466" alt="image" src="https://github.com/user-attachments/assets/c62fad9b-16e1-41f1-93e6-96932ac94c5c" />
 
 
 ## Data Lake Architecture (Medallion Pattern)
